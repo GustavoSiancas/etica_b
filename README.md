@@ -35,7 +35,7 @@ Con `psql` instalado y `DATABASE_URL` configurada, para una base nueva ejecutar 
 psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_initial.up.sql
 ```
 
-Para cargar el conjunto de datos ficticios (solo en pruebas), ejecutar `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f seeds/demo_data.sql`; crea tres expedientes, participantes, 28 documentos y seis escritos con adjuntos PDF sint?ticos en data URI. El archivo reemplaza ?nicamente filas `[DEMO]`; se puede volver a ejecutar sin duplicarlas y conserva los datos reales.
+Para cargar el conjunto de datos ficticios (solo en pruebas), ejecutar `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f seeds/demo_data.sql`; crea tres expedientes, participantes, 45 documentos y seis escritos con enlaces PDF publicos. El archivo reemplaza ?nicamente filas `[DEMO]`; se puede volver a ejecutar sin duplicarlas y conserva los datos reales.
 
 La ruta de desarrollo `GET /dev/demo-data/reset` vuelve a cargar el fixture y reemplaza ?nicamente filas `[DEMO]`. Est? deshabilitada por defecto; para activarla en un entorno local de pruebas, configurar `ENABLE_DEMO_RESET=true`. No habilitarla en producci?n.
 
@@ -117,8 +117,10 @@ Al arrancar se registra `demo_reset_enabled`. Si es `false`, `/dev/demo-data/res
 
 `DELETE /dev/database/clear` elimina todos los registros de las tablas de la aplicacion, incluidos datos reales, historial, contadores y catalogos de etapas/subetapas. Conserva las tablas, restricciones y triggers; reinicia las identidades y no inyecta datos. No elimina archivos almacenados en R2. Se habilita de forma independiente con `ENABLE_DATABASE_CLEAR=true` y esta deshabilitado por defecto (404). La cuenta PostgreSQL debe poder deshabilitar temporalmente el trigger de TRUNCATE del historial; el borrado y la restauracion del trigger ocurren en una unica transaccion. Si falla, se revierte todo.
 
-El servicio existente `GET /dev/demo-data/reset` sigue reemplazando solo filas `[DEMO]` y cargando el fixture con `ENABLE_DEMO_RESET=true`. Despues de un borrado completo hay que reponer los catalogos de etapas/subetapas antes de cargar documentos con el fixture. Ambas rutas aparecen en Swagger y sus resultados se registran en consola. Estas rutas no tienen autenticacion: habilitarlas unicamente en entornos de desarrollo/pruebas.
+El servicio existente `GET /dev/demo-data/reset` sigue reemplazando solo filas `[DEMO]` y cargando el fixture con `ENABLE_DEMO_RESET=true`. El fixture repone automaticamente los catalogos faltantes antes de cargar documentos. Ambas rutas aparecen en Swagger y sus resultados se registran en consola. Estas rutas no tienen autenticacion: habilitarlas unicamente en entornos de desarrollo/pruebas.
 
 
 
-El fixture incluye 100 denunciantes y 150 denunciados adicionales (104 y 154 en total). Los participantes muestran nombres ficticios verosimiles y codigos CAL simulados, sin prefijo [DEMO]. La columna interna `is_demo` identifica estas filas para el reset y sus conteos; el seed agrega la columna de forma idempotente en bases existentes. Los codigos no corresponden a colegiados verificados.
+El fixture incluye 100 denunciantes y 150 denunciados adicionales (104 y 154 en total). Los denunciantes incluyen personas y empresas ficticias sin CAL; solo los denunciados muestran codigos CAL simulados. Ningun participante muestra el prefijo [DEMO]. La columna interna `is_demo` identifica estas filas para el reset y sus conteos; el seed agrega la columna de forma idempotente en bases existentes. Los codigos no corresponden a colegiados verificados.
+
+El reset crea un documento por subetapa activa y expediente (45 con el catalogo inicial de 5 etapas y 15 subetapas), ademas de seis escritos con remitentes. Hay 26 empresas entre los 104 denunciantes. Los adjuntos alternan tres PDF publicos de W3C y Adobe; son muestras externas sin relacion con los casos ficticios.

@@ -18,7 +18,7 @@ type fakeDemoData struct {
 func (f *fakeDemoData) Enabled() bool { return f.enabled }
 func (f *fakeDemoData) Reset(context.Context) (services.DemoDataSummary, error) {
 	f.called = true
-	return services.DemoDataSummary{Expedientes: 3, Denunciantes: 4, Denunciados: 4, Documents: 28, Escritos: 6}, nil
+	return services.DemoDataSummary{Expedientes: 3, Denunciantes: 104, Denunciados: 154, Documents: 45, Escritos: 6}, nil
 }
 
 func TestInvalidRequestsAndCORS(t *testing.T) {
@@ -64,7 +64,7 @@ func TestDemoDataResetRouteIsOptIn(t *testing.T) {
 	handler = Routes(nil, nil, nil, nil, RoutesOption{DemoData: enabled})
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/dev/demo-data/reset", nil))
-	if response.Code != http.StatusOK || !enabled.called || !strings.Contains(response.Body.String(), `"documents":28`) {
+	if response.Code != http.StatusOK || !enabled.called || !strings.Contains(response.Body.String(), `"documents":45`) {
 		t.Fatal("enabled demo reset route did not reload the fixture")
 	}
 }
