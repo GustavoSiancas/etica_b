@@ -11,8 +11,13 @@ import (
 )
 
 type RoutesOption struct {
-	Escrito  EscritoAPI
-	DemoData DemoDataAPI
+	Escrito       EscritoAPI
+	DemoData      DemoDataAPI
+	DatabaseClear DatabaseClearAPI
+}
+
+type DatabaseClearAPI interface {
+	Clear(context.Context) error
 }
 
 type DemoDataAPI interface {
@@ -25,6 +30,15 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 	registerSwagger(mux)
 	registerExpedientes(mux, expedientes, documents, participants)
 	if len(options) > 0 {
+		if clear := options[0].DatabaseClear; clear != nil {
+			mux.HandleFunc("DELETE /dev/database/clear", func(w http.ResponseWriter, r *http.Request) {
+				if err := clear.Clear(r.Context()); err != nil {
+					failure(w, err)
+					return
+				}
+				respond(w, http.StatusOK, map[string]string{"message": "all application records deleted; tables preserved"})
+			})
+		}
 		if options[0].Escrito != nil {
 			registerEscritos(mux, options[0].Escrito)
 		}
@@ -203,6 +217,9 @@ func failure(w http.ResponseWriter, err error) {
 		status = 409
 		message = "escrito is already attended"
 	case errors.Is(err, services.ErrDemoResetDisabled):
+		status = 404
+		message = "not found"
+	case errors.Is(err, services.ErrDatabaseClearDisabled):
 		status = 404
 		message = "not found"
 	}

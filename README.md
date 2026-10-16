@@ -112,3 +112,10 @@ La consola del servicio registra cada peticion en JSON con `request_id`, metodo,
 Cada respuesta incluye `X-Request-ID`, expuesto por CORS para que el frontend pueda mostrarlo o registrarlo al reportar un fallo. Buscar ese ID en los logs del despliegue permite correlacionar la respuesta con el backend. Si no existe un registro correspondiente, revisar tambien el proxy, el dominio y el despliegue que recibio la peticion.
 
 Al arrancar se registra `demo_reset_enabled`. Si es `false`, `/dev/demo-data/reset` devuelve 404 y el log indica `demo data reset is disabled`. Habilitar `ENABLE_DEMO_RESET=true` solo en el servicio de desarrollo/pruebas y volver a desplegar o reiniciar para cargar la variable. Swagger documenta la ruta aunque este deshabilitada.
+
+## Borrado completo para pruebas
+
+`DELETE /dev/database/clear` elimina todos los registros de las tablas de la aplicacion, incluidos datos reales, historial, contadores y catalogos de etapas/subetapas. Conserva las tablas, restricciones y triggers; reinicia las identidades y no inyecta datos. No elimina archivos almacenados en R2. Se habilita de forma independiente con `ENABLE_DATABASE_CLEAR=true` y esta deshabilitado por defecto (404). La cuenta PostgreSQL debe poder deshabilitar temporalmente el trigger de TRUNCATE del historial; el borrado y la restauracion del trigger ocurren en una unica transaccion. Si falla, se revierte todo.
+
+El servicio existente `GET /dev/demo-data/reset` sigue reemplazando solo filas `[DEMO]` y cargando el fixture con `ENABLE_DEMO_RESET=true`. Despues de un borrado completo hay que reponer los catalogos de etapas/subetapas antes de cargar documentos con el fixture. Ambas rutas aparecen en Swagger y sus resultados se registran en consola. Estas rutas no tienen autenticacion: habilitarlas unicamente en entornos de desarrollo/pruebas.
+
