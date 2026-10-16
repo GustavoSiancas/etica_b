@@ -1,10 +1,14 @@
 -- DATOS COMPLETAMENTE FICTICIOS PARA DESARROLLO Y PRUEBAS.
 -- Ejecutar después de migrations/001_initial.up.sql en una base de pruebas vacía.
--- Solo elimina y reemplaza filas con prefijo [DEMO]; puede ejecutarse repetidamente.
+-- Replaces [DEMO] records and internally marked fixture participants; repeatable.
 -- Los adjuntos PDF de demostración se guardan como data URI en file_url;
 -- no son archivos de R2 y no deben usarse en producción.
 
 BEGIN;
+
+-- Internal fixture ownership; display names do not need a [DEMO] prefix.
+ALTER TABLE denunciantes ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE denunciados ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Permite que el reset retire solamente eventos de historial creados por este fixture.
 -- El resto del historial conserva su protección append-only.
@@ -37,8 +41,8 @@ DELETE FROM expediente_denunciantes ep USING expedientes e
 WHERE ep.expediente_id = e.id AND e.name LIKE '[DEMO]%';
 DELETE FROM expediente_denunciados ep USING expedientes e
 WHERE ep.expediente_id = e.id AND e.name LIKE '[DEMO]%';
-DELETE FROM denunciantes WHERE name LIKE '[DEMO]%';
-DELETE FROM denunciados WHERE name LIKE '[DEMO]%';
+DELETE FROM denunciantes WHERE is_demo OR name LIKE '[DEMO]%';
+DELETE FROM denunciados WHERE is_demo OR name LIKE '[DEMO]%';
 DELETE FROM expedientes WHERE name LIKE '[DEMO]%';
 
 INSERT INTO expedientes (name, opening_date, status, init_type, created_at, updated_at) VALUES
@@ -46,25 +50,49 @@ INSERT INTO expedientes (name, opening_date, status, init_type, created_at, upda
     ('[DEMO] Uso de recursos institucionales', '2025-06-03', 'OPEN', 'DENUNCIA_DE_OFICIO', '2025-06-03 10:00:00-05', '2025-06-03 10:00:00-05'),
     ('[DEMO] Incumplimiento de deberes funcionales', '2026-01-19', 'CLOSED', 'COMUNICACIONES_DE_ENTIDADES_PUBLICAS', '2026-01-19 08:45:00-05', '2026-05-22 17:20:00-05');
 
-INSERT INTO denunciantes (name, created_at, updated_at) VALUES
-    ('[DEMO] Valeria Rojas Salazar', '2025-02-14 09:10:00-05', '2025-02-14 09:10:00-05'),
-    ('[DEMO] Martín Paredes León', '2025-02-14 09:12:00-05', '2025-02-14 09:12:00-05'),
-    ('[DEMO] Rosa Huamán Torres', '2025-06-03 09:55:00-05', '2025-06-03 09:55:00-05'),
-    ('[DEMO] Diego Cárdenas Ruiz', '2026-01-19 08:40:00-05', '2026-01-19 08:40:00-05');
+INSERT INTO denunciantes (name, created_at, updated_at, is_demo) VALUES
+    ('Valeria Rojas Salazar CAL 20012', '2025-02-14 09:10:00-05', '2025-02-14 09:10:00-05', TRUE),
+    ('Martín Paredes León CAL 20013', '2025-02-14 09:12:00-05', '2025-02-14 09:12:00-05', TRUE),
+    ('Rosa Huamán Torres CAL 20014', '2025-06-03 09:55:00-05', '2025-06-03 09:55:00-05', TRUE),
+    ('Diego Cárdenas Ruiz CAL 20015', '2026-01-19 08:40:00-05', '2026-01-19 08:40:00-05', TRUE);
 
-INSERT INTO denunciados (name, created_at, updated_at) VALUES
-    ('[DEMO] Andrés Quiroz Vega', '2025-02-14 09:11:00-05', '2025-02-14 09:11:00-05'),
-    ('[DEMO] Lucía Benavides Cruz', '2025-02-14 09:13:00-05', '2025-02-14 09:13:00-05'),
-    ('[DEMO] Sergio Valdivia Ponce', '2025-06-03 09:56:00-05', '2025-06-03 09:56:00-05'),
-    ('[DEMO] Patricia Salas Méndez', '2026-01-19 08:41:00-05', '2026-01-19 08:41:00-05');
+INSERT INTO denunciados (name, created_at, updated_at, is_demo) VALUES
+    ('Andrés Quiroz Vega CAL 20016', '2025-02-14 09:11:00-05', '2025-02-14 09:11:00-05', TRUE),
+    ('Lucía Benavides Cruz CAL 20017', '2025-02-14 09:13:00-05', '2025-02-14 09:13:00-05', TRUE),
+    ('Sergio Valdivia Ponce CAL 20018', '2025-06-03 09:56:00-05', '2025-06-03 09:56:00-05', TRUE),
+    ('Patricia Salas Méndez CAL 20019', '2026-01-19 08:41:00-05', '2026-01-19 08:41:00-05', TRUE);
+
+-- Additional fictional people with realistic names and simulated CAL codes.
+WITH names AS (
+    SELECT ARRAY['Alejandro','Camila','Fernando','Gabriela','Javier','Mariana','Nicolás','Paola','Ricardo','Sofía','Antonio','Daniela','Eduardo','Florencia','Gonzalo','Isabel','Joaquín','Lorena','Miguel','Natalia','Óscar','Pilar','Renato','Silvia','Tomás'] AS first_names,
+           ARRAY['Aguilar','Benavides','Castillo','Delgado','Espinoza','Flores','García','Herrera','Ibáñez','Jiménez','López','Mendoza','Navarro','Ortega','Paredes'] AS last_names,
+           ARRAY['Salazar','Torres','Vargas','Ramos','Quispe','Medina','Rojas','Cabrera','Soto','Vega','Campos','Reyes','Ponce','Ruiz','León','Cruz','Huamán'] AS second_names
+)
+INSERT INTO denunciantes (name, is_demo)
+SELECT first_names[1 + ((n - 1) % 25)] || ' ' ||
+       last_names[1 + (((n - 1) / 25) % 15)] || ' ' ||
+       second_names[1 + ((n - 1) % 17)] || ' CAL ' || (20100 + n)::text, TRUE
+FROM names CROSS JOIN generate_series(1, 100) AS series(n);
+
+-- Additional fictional people with realistic names and simulated CAL codes.
+WITH names AS (
+    SELECT ARRAY['Alejandro','Camila','Fernando','Gabriela','Javier','Mariana','Nicolás','Paola','Ricardo','Sofía','Antonio','Daniela','Eduardo','Florencia','Gonzalo','Isabel','Joaquín','Lorena','Miguel','Natalia','Óscar','Pilar','Renato','Silvia','Tomás'] AS first_names,
+           ARRAY['Aguilar','Benavides','Castillo','Delgado','Espinoza','Flores','García','Herrera','Ibáñez','Jiménez','López','Mendoza','Navarro','Ortega','Paredes'] AS last_names,
+           ARRAY['Salazar','Torres','Vargas','Ramos','Quispe','Medina','Rojas','Cabrera','Soto','Vega','Campos','Reyes','Ponce','Ruiz','León','Cruz','Huamán'] AS second_names
+)
+INSERT INTO denunciados (name, is_demo)
+SELECT first_names[1 + ((n - 1) % 25)] || ' ' ||
+       last_names[1 + (((n - 1) / 25) % 15)] || ' ' ||
+       second_names[1 + ((n - 1) % 17)] || ' CAL ' || (20200 + n)::text, TRUE
+FROM names CROSS JOIN generate_series(1, 150) AS series(n);
 
 INSERT INTO expediente_denunciantes (expediente_id, denunciante_id, is_active)
 SELECT e.id, p.id, TRUE
 FROM (VALUES
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Valeria Rojas Salazar'),
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Martín Paredes León'),
-    ('[DEMO] Uso de recursos institucionales', '[DEMO] Rosa Huamán Torres'),
-    ('[DEMO] Incumplimiento de deberes funcionales', '[DEMO] Diego Cárdenas Ruiz')
+    ('[DEMO] Compra de suministros y conflicto de interés', 'Valeria Rojas Salazar CAL 20012'),
+    ('[DEMO] Compra de suministros y conflicto de interés', 'Martín Paredes León CAL 20013'),
+    ('[DEMO] Uso de recursos institucionales', 'Rosa Huamán Torres CAL 20014'),
+    ('[DEMO] Incumplimiento de deberes funcionales', 'Diego Cárdenas Ruiz CAL 20015')
 ) AS v(expediente_name, person_name)
 JOIN expedientes e ON e.name = v.expediente_name
 JOIN denunciantes p ON p.name = v.person_name;
@@ -72,10 +100,10 @@ JOIN denunciantes p ON p.name = v.person_name;
 INSERT INTO expediente_denunciados (expediente_id, denunciado_id, is_active)
 SELECT e.id, p.id, TRUE
 FROM (VALUES
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Andrés Quiroz Vega'),
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Lucía Benavides Cruz'),
-    ('[DEMO] Uso de recursos institucionales', '[DEMO] Sergio Valdivia Ponce'),
-    ('[DEMO] Incumplimiento de deberes funcionales', '[DEMO] Patricia Salas Méndez')
+    ('[DEMO] Compra de suministros y conflicto de interés', 'Andrés Quiroz Vega CAL 20016'),
+    ('[DEMO] Compra de suministros y conflicto de interés', 'Lucía Benavides Cruz CAL 20017'),
+    ('[DEMO] Uso de recursos institucionales', 'Sergio Valdivia Ponce CAL 20018'),
+    ('[DEMO] Incumplimiento de deberes funcionales', 'Patricia Salas Méndez CAL 20019')
 ) AS v(expediente_name, person_name)
 JOIN expedientes e ON e.name = v.expediente_name
 JOIN denunciados p ON p.name = v.person_name;
@@ -148,12 +176,12 @@ JOIN expedientes e ON e.id = d.expediente_id AND e.name LIKE '[DEMO]%'
 JOIN expediente_denunciados ep ON ep.expediente_id = d.expediente_id AND ep.is_active;
 
 WITH demo_escritos(expediente_name, title, type, document_date, status, created_at, sender_type, sender_name) AS (VALUES
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de solicitud de acceso al expediente', 'Solicitud de acceso', '2025-02-18'::date, 'ATENDIDA', '2025-02-18 10:05:00-05'::timestamptz, 'DENUNCIANTE', '[DEMO] Valeria Rojas Salazar'),
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de descargos y anexos', 'Descargos', '2025-03-05'::date, 'ATENDIDA', '2025-03-05 12:30:00-05'::timestamptz, 'DENUNCIADO', '[DEMO] Andrés Quiroz Vega'),
-    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de ampliación de denuncia', 'Ampliación de denuncia', '2025-03-08'::date, 'NUEVA', '2025-03-08 09:40:00-05'::timestamptz, 'DENUNCIANTE', '[DEMO] Martín Paredes León'),
-    ('[DEMO] Uso de recursos institucionales', '[DEMO] Escrito de entrega de información', 'Entrega de información', '2025-06-12'::date, 'ATENDIDA', '2025-06-12 11:15:00-05'::timestamptz, 'DENUNCIANTE', '[DEMO] Rosa Huamán Torres'),
-    ('[DEMO] Uso de recursos institucionales', '[DEMO] Escrito de respuesta a requerimiento', 'Respuesta a requerimiento', '2025-06-20'::date, 'NUEVA', '2025-06-20 16:10:00-05'::timestamptz, 'DENUNCIADO', '[DEMO] Sergio Valdivia Ponce'),
-    ('[DEMO] Incumplimiento de deberes funcionales', '[DEMO] Escrito de observaciones a la resolución', 'Observaciones', '2026-04-02'::date, 'ATENDIDA', '2026-04-02 14:25:00-05'::timestamptz, 'DENUNCIADO', '[DEMO] Patricia Salas Méndez')
+    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de solicitud de acceso al expediente', 'Solicitud de acceso', '2025-02-18'::date, 'ATENDIDA', '2025-02-18 10:05:00-05'::timestamptz, 'DENUNCIANTE', 'Valeria Rojas Salazar CAL 20012'),
+    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de descargos y anexos', 'Descargos', '2025-03-05'::date, 'ATENDIDA', '2025-03-05 12:30:00-05'::timestamptz, 'DENUNCIADO', 'Andrés Quiroz Vega CAL 20016'),
+    ('[DEMO] Compra de suministros y conflicto de interés', '[DEMO] Escrito de ampliación de denuncia', 'Ampliación de denuncia', '2025-03-08'::date, 'NUEVA', '2025-03-08 09:40:00-05'::timestamptz, 'DENUNCIANTE', 'Martín Paredes León CAL 20013'),
+    ('[DEMO] Uso de recursos institucionales', '[DEMO] Escrito de entrega de información', 'Entrega de información', '2025-06-12'::date, 'ATENDIDA', '2025-06-12 11:15:00-05'::timestamptz, 'DENUNCIANTE', 'Rosa Huamán Torres CAL 20014'),
+    ('[DEMO] Uso de recursos institucionales', '[DEMO] Escrito de respuesta a requerimiento', 'Respuesta a requerimiento', '2025-06-20'::date, 'NUEVA', '2025-06-20 16:10:00-05'::timestamptz, 'DENUNCIADO', 'Sergio Valdivia Ponce CAL 20018'),
+    ('[DEMO] Incumplimiento de deberes funcionales', '[DEMO] Escrito de observaciones a la resolución', 'Observaciones', '2026-04-02'::date, 'ATENDIDA', '2026-04-02 14:25:00-05'::timestamptz, 'DENUNCIADO', 'Patricia Salas Méndez CAL 20019')
 )
 INSERT INTO escritos (title, type, expediente_number, document_date, file_url, status, created_at, updated_at)
 SELECT v.title, v.type, e.number, v.document_date,
@@ -167,9 +195,9 @@ SELECT es.id, p.id
 FROM escritos es
 JOIN expedientes e ON e.number = es.expediente_number AND e.name LIKE '[DEMO]%'
 JOIN (VALUES
-    ('[DEMO] Escrito de solicitud de acceso al expediente', '[DEMO] Valeria Rojas Salazar'),
-    ('[DEMO] Escrito de ampliación de denuncia', '[DEMO] Martín Paredes León'),
-    ('[DEMO] Escrito de entrega de información', '[DEMO] Rosa Huamán Torres')
+    ('[DEMO] Escrito de solicitud de acceso al expediente', 'Valeria Rojas Salazar CAL 20012'),
+    ('[DEMO] Escrito de ampliación de denuncia', 'Martín Paredes León CAL 20013'),
+    ('[DEMO] Escrito de entrega de información', 'Rosa Huamán Torres CAL 20014')
 ) AS v(escrito_title, person_name) ON v.escrito_title = es.title
 JOIN denunciantes p ON p.name = v.person_name;
 
@@ -178,9 +206,9 @@ SELECT es.id, p.id
 FROM escritos es
 JOIN expedientes e ON e.number = es.expediente_number AND e.name LIKE '[DEMO]%'
 JOIN (VALUES
-    ('[DEMO] Escrito de descargos y anexos', '[DEMO] Andrés Quiroz Vega'),
-    ('[DEMO] Escrito de respuesta a requerimiento', '[DEMO] Sergio Valdivia Ponce'),
-    ('[DEMO] Escrito de observaciones a la resolución', '[DEMO] Patricia Salas Méndez')
+    ('[DEMO] Escrito de descargos y anexos', 'Andrés Quiroz Vega CAL 20016'),
+    ('[DEMO] Escrito de respuesta a requerimiento', 'Sergio Valdivia Ponce CAL 20018'),
+    ('[DEMO] Escrito de observaciones a la resolución', 'Patricia Salas Méndez CAL 20019')
 ) AS v(escrito_title, person_name) ON v.escrito_title = es.title
 JOIN denunciados p ON p.name = v.person_name;
 

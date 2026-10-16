@@ -32,7 +32,7 @@ func NewDemoDataService(db *gorm.DB, path string, enabled bool) *DemoDataService
 
 func (s *DemoDataService) Enabled() bool { return s != nil && s.enabled }
 
-// Reset reloads only the [DEMO]-prefixed fixture rows. Other rows are untouched.
+// Reset reloads fixture rows, including internally marked participants.
 func (s *DemoDataService) Reset(ctx context.Context) (DemoDataSummary, error) {
 	if !s.Enabled() {
 		return DemoDataSummary{}, ErrDemoResetDisabled
@@ -56,7 +56,13 @@ func (s *DemoDataService) Reset(ctx context.Context) (DemoDataSummary, error) {
 		{"escritos", "title", &summary.Escritos},
 	}
 	for _, query := range queries {
-		if err := s.db.WithContext(ctx).Table(query.table).Where(query.column+" LIKE ?", "[DEMO]%").Count(query.count).Error; err != nil {
+		rows := s.db.WithContext(ctx).Table(query.table)
+		if query.table == "denunciantes" || query.table == "denunciados" {
+			rows = rows.Where("is_demo = ?", true)
+		} else {
+			rows = rows.Where(query.column+" LIKE ?", "[DEMO]%")
+		}
+		if err := rows.Count(query.count).Error; err != nil {
 			return DemoDataSummary{}, err
 		}
 	}

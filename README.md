@@ -119,3 +119,6 @@ Al arrancar se registra `demo_reset_enabled`. Si es `false`, `/dev/demo-data/res
 
 El servicio existente `GET /dev/demo-data/reset` sigue reemplazando solo filas `[DEMO]` y cargando el fixture con `ENABLE_DEMO_RESET=true`. Despues de un borrado completo hay que reponer los catalogos de etapas/subetapas antes de cargar documentos con el fixture. Ambas rutas aparecen en Swagger y sus resultados se registran en consola. Estas rutas no tienen autenticacion: habilitarlas unicamente en entornos de desarrollo/pruebas.
 
+
+
+El fixture incluye 100 denunciantes y 150 denunciados adicionales (104 y 154 en total). Los participantes muestran nombres ficticios verosimiles y codigos CAL simulados, sin prefijo [DEMO]. La columna interna `is_demo` identifica estas filas para el reset y sus conteos; el seed agrega la columna de forma idempotente en bases existentes. Los codigos no corresponden a colegiados verificados.
