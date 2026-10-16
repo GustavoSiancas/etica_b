@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	slog.Info("configuration loaded", "http_addr", cfg.HTTPAddr, "demo_reset_enabled", cfg.EnableDemoReset)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	db, pool, err := postgres.Open(ctx, cfg.DatabaseURL)
@@ -63,8 +65,10 @@ func run() error {
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	log.SetFlags(0)
 	if err := run(); err != nil {
-		log.Print(err)
+		slog.Error("application startup failed", "error", err.Error())
 		os.Exit(1)
 	}
 }

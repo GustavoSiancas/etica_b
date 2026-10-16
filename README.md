@@ -104,3 +104,11 @@ erDiagram
 ## Verificación
 
 `go test ./...` verifica la compilación de las entidades. Las migraciones requieren validación en una instancia PostgreSQL: aplicar up, ejecutar el seed dos veces y comprobar los conteos (5/15), rechazar asociaciones entre expedientes distintos, duplicados, participantes inexistentes y mutaciones del historial. En el entorno de creación no había PostgreSQL ni Docker disponibles, por lo que esos controles de integración no se ejecutaron.
+
+## Logs de HTTP
+
+La consola del servicio registra cada peticion en JSON con `request_id`, metodo, path, ruta, status, duracion y bytes. Los errores 4xx usan WARN y los 5xx ERROR; los errores de servicio incluyen `error` para diagnostico interno. No se registran cuerpos, cabeceras ni parametros de consulta. Los detalles internos no se devuelven al cliente.
+
+Cada respuesta incluye `X-Request-ID`, expuesto por CORS para que el frontend pueda mostrarlo o registrarlo al reportar un fallo. Buscar ese ID en los logs del despliegue permite correlacionar la respuesta con el backend. Si no existe un registro correspondiente, revisar tambien el proxy, el dominio y el despliegue que recibio la peticion.
+
+Al arrancar se registra `demo_reset_enabled`. Si es `false`, `/dev/demo-data/reset` devuelve 404 y el log indica `demo data reset is disabled`. Habilitar `ENABLE_DEMO_RESET=true` solo en el servicio de desarrollo/pruebas y volver a desplegar o reiniciar para cargar la variable. Swagger documenta la ruta aunque este deshabilitada.

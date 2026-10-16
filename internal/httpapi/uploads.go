@@ -28,8 +28,12 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 		if options[0].Escrito != nil {
 			registerEscritos(mux, options[0].Escrito)
 		}
-		if demo := options[0].DemoData; demo != nil && demo.Enabled() {
+		if demo := options[0].DemoData; demo != nil {
 			mux.HandleFunc("GET /dev/demo-data/reset", func(w http.ResponseWriter, r *http.Request) {
+				if !demo.Enabled() {
+					failure(w, services.ErrDemoResetDisabled)
+					return
+				}
 				result, err := demo.Reset(r.Context())
 				if err != nil {
 					failure(w, err)
@@ -113,18 +117,19 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 		}
 		respond(w, 200, map[string]string{"file_url": body.FileURL})
 	})
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return requestLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		mux.ServeHTTP(w, r)
-	})
+	}))
 }
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -146,6 +151,9 @@ func respond(w http.ResponseWriter, status int, value any) {
 	json.NewEncoder(w).Encode(value)
 }
 func failure(w http.ResponseWriter, err error) {
+	if out, ok := w.(*loggedResponse); ok {
+		out.err = err
+	}
 	status := 500
 	message := "internal server error"
 	switch {
