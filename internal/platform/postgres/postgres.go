@@ -43,6 +43,34 @@ func Diagnose(err error) string {
 	return "connection failed: check PG_* configuration, SSL mode and PostgreSQL logs"
 }
 
+// DiagnoseMigration describes schema failures without logging SQL or server messages.
+func DiagnoseMigration(err error) string {
+	var fileErr *os.PathError
+	if errors.As(err, &fileErr) {
+		return "cannot read initial migration: include migrations/001_initial.up.sql in the deployment and start from the application root"
+	}
+	var serverErr *pgconn.PgError
+	if errors.As(err, &serverErr) {
+		var reason string
+		switch serverErr.Code {
+		case "42501":
+			reason = "insufficient privileges: migration role needs USAGE and CREATE on the target schema and ownership of affected objects"
+		case "42710", "42P07", "42723":
+			reason = "schema object already exists: inspect existing schema and search_path before applying the consolidated migration; do not delete existing data"
+		case "42601":
+			reason = "SQL syntax error: check the deployed migration and PostgreSQL version"
+		case "42804":
+			reason = "incompatible existing schema type: compare expediente_init_type_enum with the initial migration before upgrading; existing data was not deleted"
+		case "3F000":
+			reason = "target schema is missing or search_path has no valid schema"
+		default:
+			reason = "migration rejected: inspect PostgreSQL server logs for the failing statement"
+		}
+		return "SQLSTATE " + serverErr.Code + ": " + reason
+	}
+	return Diagnose(err)
+}
+
 func Open(ctx context.Context, dsn string) (*gorm.DB, *sql.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {

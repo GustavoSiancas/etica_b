@@ -26,16 +26,19 @@ func run() error {
 	slog.Info("configuration loaded", "http_addr", cfg.HTTPAddr, "demo_reset_enabled", cfg.EnableDemoReset, "database_clear_enabled", cfg.EnableDatabaseClear, "initial_participant_load_enabled", cfg.EnableInitialParticipantLoad)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	slog.Info("startup: connecting to PostgreSQL")
 	db, pool, err := postgres.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("PostgreSQL: %s", postgres.Diagnose(err))
 	}
 	defer pool.Close()
+	slog.Info("startup: PostgreSQL connected; checking initial migration")
 	if applied, migrationErr := postgres.ApplyInitialMigration(ctx, db, "migrations/001_initial.up.sql"); migrationErr != nil {
-		return fmt.Errorf("PostgreSQL initial migration: %s", postgres.Diagnose(migrationErr))
+		return fmt.Errorf("PostgreSQL initial migration: %s", postgres.DiagnoseMigration(migrationErr))
 	} else if applied {
 		log.Printf("Applied consolidated initial migration")
 	}
+	slog.Info("startup: initial migration checked; checking R2 bucket")
 	if err = r2.Check(ctx, r2.New(cfg), cfg.R2Bucket); err != nil {
 		return fmt.Errorf("R2: %s", r2.Diagnose(err))
 	}
@@ -68,7 +71,7 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	log.SetFlags(0)
 	if err := run(); err != nil {
-		slog.Error("application startup failed", "error", err.Error())
+		slog.Error("application startup failed: "+err.Error(), "error", err.Error())
 		os.Exit(1)
 	}
 }
