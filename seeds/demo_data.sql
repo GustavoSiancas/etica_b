@@ -192,7 +192,3 @@ JOIN denunciados p ON p.name = v.person_name AND p.is_demo;
 
 COMMIT;
 
--- Comprobación rápida después de ejecutar:
--- SELECT count(*) FROM expedientes WHERE description LIKE '[DEMO]%';       -- 3
--- SELECT count(*) FROM documents WHERE name LIKE '[DEMO]%';         -- 45 with the default 15 substages
--- SELECT count(*) FROM escritos WHERE title LIKE '[DEMO]%';         -- 6

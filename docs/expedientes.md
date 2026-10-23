@@ -57,7 +57,7 @@ La respuesta `201 Created` incluye el valor enum directamente:
 }
 ```
 
-La descripcion y `opening_date` son obligatorios. La fecha usa el formato `YYYY-MM-DD`; no se compara con la fecha actual, as? que admite fechas futuras. Un valor ausente o desconocido de `init_type` devuelve 400. PostgreSQL restringe la columna al enum. Al añadir un valor, ejecutar `ALTER TYPE expediente_init_type_enum ADD VALUE 'NUEVO_VALOR';` y actualizar la lista estática de opciones en `internal/services/expedientes.go`.
+La descripcion es opcional: puede omitirse o enviarse como texto vacio. Si no se indica, se guarda y devuelve como `""`. `opening_date` es obligatorio. La fecha usa el formato `YYYY-MM-DD`; no se compara con la fecha actual, as? que admite fechas futuras. Un valor ausente o desconocido de `init_type` devuelve 400. PostgreSQL restringe la columna al enum. Al añadir un valor, ejecutar `ALTER TYPE expediente_init_type_enum ADD VALUE 'NUEVO_VALOR';` y actualizar la lista estática de opciones en `internal/services/expedientes.go`.
 
 Los IDs de participantes se envian en `denunciante_ids` y `denunciado_ids`. Deben existir previamente por la carga inicial. Las listas admiten cero o mas IDs, sin duplicados ni valores no positivos. El servicio crea expediente y asociaciones en una sola transaccion; si falta un participante devuelve 404 y revierte toda la operacion. No existen POST separados para asociar participantes despues.
 

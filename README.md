@@ -83,7 +83,7 @@ Todos estos campos estan incluidos en `migrations/001_initial.up.sql`.
 
 ## Descripcion y clasificacion de documentos
 
-Los expedientes usan `description` (TEXT) en lugar de nombre/titulo. Los documentos conservan `title` y reciben `stage` y `type` como texto libre, incluyendo OTROS. `stage` puede contener una etapa general o una subetapa. Consultar `GET /document-stages` y `GET /document-types` para los selectores; no hay FK desde documentos a estos diccionarios.
+Los expedientes usan `description` (TEXT, opcional) en lugar de nombre/titulo. Si se omite se guarda como texto vacio. Los documentos conservan `title` y reciben `stage` y `type` como texto libre, incluyendo OTROS. `stage` puede contener una etapa general o una subetapa. Consultar `GET /document-stages` y `GET /document-types` para los selectores; no hay FK desde documentos a estos diccionarios.
 
 El unico esquema de instalacion es `migrations/001_initial.up.sql`; `001_initial.down.sql` revierte esa misma instalacion. No quedan migraciones incrementales. Esta consolidacion no actualiza bases con un esquema anterior ni se ha aplicado a la base existente.
 

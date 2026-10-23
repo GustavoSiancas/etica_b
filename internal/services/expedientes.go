@@ -87,7 +87,7 @@ var expedienteStatuses = []ExpedienteStatusResponse{
 
 func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteInput) (ExpedienteResponse, error) {
 	input.Description = strings.TrimSpace(input.Description)
-	if input.Description == "" || !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
+	if !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
 		return ExpedienteResponse{}, ErrExpedienteInvalid
 	}
 	initType := input.InitType
