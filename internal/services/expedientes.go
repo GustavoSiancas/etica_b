@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"etica_back/internal/persistence/models"
-	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -34,9 +34,11 @@ func (d *Date) UnmarshalJSON(data []byte) error {
 func (d Date) MarshalJSON() ([]byte, error) { return json.Marshal(d.Format("2006-01-02")) }
 
 type CreateExpedienteInput struct {
-	Name        string `json:"name"`
-	OpeningDate *Date  `json:"opening_date"`
-	InitType    string `json:"init_type"`
+	DenuncianteIDs []int64 `json:"denunciante_ids"`
+	DenunciadoIDs  []int64 `json:"denunciado_ids"`
+	Description    string  `json:"description"`
+	OpeningDate    *Date   `json:"opening_date"`
+	InitType       string  `json:"init_type"`
 }
 type ExpedienteInitTypeResponse struct {
 	Value string `json:"value"`
@@ -48,7 +50,7 @@ type ExpedienteStatusResponse struct {
 }
 type ExpedienteResponse struct {
 	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
+	Description string    `json:"description"`
 	OpeningDate *Date     `json:"opening_date"`
 	Number      string    `json:"number"`
 	Code        string    `json:"code"`
@@ -84,8 +86,8 @@ var expedienteStatuses = []ExpedienteStatusResponse{
 }
 
 func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteInput) (ExpedienteResponse, error) {
-	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" || len([]rune(input.Name)) > 255 || input.OpeningDate == nil || !ValidExpedienteInitType(input.InitType) {
+	input.Description = strings.TrimSpace(input.Description)
+	if input.Description == "" || !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
 		return ExpedienteResponse{}, ErrExpedienteInvalid
 	}
 	initType := input.InitType
@@ -94,14 +96,56 @@ func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteIn
 		parsed := input.OpeningDate.Time
 		openingDate = &parsed
 	}
-	expediente := models.Expediente{Name: input.Name, OpeningDate: openingDate, Status: "OPEN", InitType: &initType}
-	if err := s.db.WithContext(ctx).Create(&expediente).Error; err != nil {
-		var pgErr *pgconn.PgError
-		if errors.Is(err, gorm.ErrDuplicatedKey) || (errors.As(err, &pgErr) && pgErr.Code == "23505") {
-			return ExpedienteResponse{}, ErrExpedienteDuplicate
+	expediente := models.Expediente{Description: input.Description, OpeningDate: openingDate, Status: "OPEN", InitType: &initType}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(input.DenuncianteIDs) > 0 {
+			var count int64
+			if err := tx.Model(&models.Denunciante{}).Where("id IN ?", input.DenuncianteIDs).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != int64(len(input.DenuncianteIDs)) {
+				return ErrParticipantNotFound
+			}
 		}
+		if len(input.DenunciadoIDs) > 0 {
+			var count int64
+			if err := tx.Model(&models.Denunciado{}).Where("id IN ?", input.DenunciadoIDs).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != int64(len(input.DenunciadoIDs)) {
+				return ErrParticipantNotFound
+			}
+		}
+		if err := tx.Create(&expediente).Error; err != nil {
+			if duplicate(err) {
+				return ErrExpedienteDuplicate
+			}
+			return err
+		}
+		if len(input.DenuncianteIDs) > 0 {
+			links := make([]models.ExpedienteDenunciante, 0, len(input.DenuncianteIDs))
+			for _, id := range input.DenuncianteIDs {
+				links = append(links, models.ExpedienteDenunciante{ExpedienteID: expediente.ID, DenuncianteID: id})
+			}
+			if err := tx.Create(&links).Error; err != nil {
+				return err
+			}
+		}
+		if len(input.DenunciadoIDs) > 0 {
+			links := make([]models.ExpedienteDenunciado, 0, len(input.DenunciadoIDs))
+			for _, id := range input.DenunciadoIDs {
+				links = append(links, models.ExpedienteDenunciado{ExpedienteID: expediente.ID, DenunciadoID: id})
+			}
+			if err := tx.Create(&links).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return ExpedienteResponse{}, err
 	}
+
 	return expedienteResponse(expediente), nil
 }
 
@@ -165,5 +209,5 @@ func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	if e.OpeningDate != nil {
 		openingDate = &Date{Time: *e.OpeningDate}
 	}
-	return ExpedienteResponse{ID: e.ID, Name: e.Name, OpeningDate: openingDate, Number: e.Number, Code: e.Code, InitType: e.InitType, Status: e.Status, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, Code: e.Code, InitType: e.InitType, Status: e.Status, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
 }

@@ -19,6 +19,7 @@ type fakeExpedientes struct {
 	statusErr     error
 }
 type fakeDocuments struct {
+	input        services.CreateDocumentInput
 	create       services.DocumentResponse
 	list         []services.DocumentResponse
 	stages       []services.DocumentStageCatalog
@@ -52,11 +53,11 @@ func (f *fakeParticipants) ListDenunciadosByExpediente(_ context.Context, id int
 	return f.list, f.listErr
 }
 
-func (*fakeParticipants) CreateDenunciante(_ context.Context, name string) (services.ParticipantResponse, error) {
-	return services.ParticipantResponse{ID: 1, Name: name}, nil
+func (*fakeParticipants) CreateDenunciante(_ context.Context, input services.CreateDenuncianteInput) (services.ParticipantResponse, error) {
+	return services.ParticipantResponse{ID: 1, Name: input.Name}, nil
 }
-func (*fakeParticipants) CreateDenunciado(_ context.Context, name string) (services.ParticipantResponse, error) {
-	return services.ParticipantResponse{ID: 2, Name: name}, nil
+func (*fakeParticipants) CreateDenunciado(_ context.Context, input services.CreateDenunciadoInput) (services.ParticipantResponse, error) {
+	return services.ParticipantResponse{ID: 2, Name: input.Name}, nil
 }
 func (*fakeParticipants) ListDenunciantes(context.Context, int, int) ([]services.ParticipantResponse, int64, error) {
 	return []services.ParticipantResponse{}, 0, nil
@@ -70,10 +71,9 @@ func (*fakeParticipants) AttachDenunciante(_ context.Context, expedienteID, part
 func (*fakeParticipants) AttachDenunciado(_ context.Context, expedienteID, participantID int64) (services.ParticipantMembershipResponse, error) {
 	return services.ParticipantMembershipResponse{ID: 6, ExpedienteID: expedienteID, Participant: services.ParticipantResponse{ID: participantID, Name: "Luis"}}, nil
 }
-func (*fakeParticipants) RemoveDenunciante(context.Context, int64, int64) error { return nil }
-func (*fakeParticipants) RemoveDenunciado(context.Context, int64, int64) error  { return nil }
 
 func (f *fakeDocuments) Create(_ context.Context, id int64, input services.CreateDocumentInput) (services.DocumentResponse, error) {
+	f.input = input
 	f.expedienteID = id
 	if f.err != nil {
 		return services.DocumentResponse{}, f.err
@@ -111,12 +111,12 @@ func TestCreateExpedienteHTTP(t *testing.T) {
 		err    error
 		status int
 	}{
-		{`{"name":"Caso de prueba","opening_date":"2026-10-20","init_type":"DENUNCIA_DE_OFICIO"}`, nil, 201},
-		{`{"name":"Caso de prueba","init_type":"DENUNCIA_DE_OFICIO"}`, services.ErrExpedienteDuplicate, 409},
+		{`{"description":"Caso de prueba","opening_date":"2026-10-20","init_type":"DENUNCIA_DE_OFICIO"}`, nil, 201},
+		{`{"description":"Caso de prueba","init_type":"DENUNCIA_DE_OFICIO"}`, services.ErrExpedienteDuplicate, 409},
 		{`{"number":""}`, nil, 400},
-		{`{"name":"Caso","init_type":"UNKNOWN"}`, services.ErrExpedienteInvalid, 400},
+		{`{"description":"Caso","init_type":"UNKNOWN"}`, services.ErrExpedienteInvalid, 400},
 		{`{"number":"EXP-1","status":"CLOSED"}`, nil, 400},
-		{`{"name":"Caso","init_type":"DENUNCIA_DE_OFICIO"}`, errors.New("private database information"), 500},
+		{`{"description":"Caso","init_type":"DENUNCIA_DE_OFICIO"}`, errors.New("private database information"), 500},
 	} {
 		handler := Routes(nil, &fakeExpedientes{createErr: test.err}, &fakeDocuments{}, &fakeParticipants{})
 		response := httptest.NewRecorder()
@@ -214,8 +214,8 @@ func TestDocumentEndpoints(t *testing.T) {
 	fake := &fakeDocuments{create: input, list: []services.DocumentResponse{input}}
 	handler := Routes(nil, &fakeExpedientes{}, fake, &fakeParticipants{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("POST", "/expedientes/42/documents", strings.NewReader(`{"title":"Resolución","substage_id":3}`)))
-	if response.Code != 201 || fake.expedienteID != 42 {
+	handler.ServeHTTP(response, httptest.NewRequest("POST", "/expedientes/42/documents", strings.NewReader(`{"title":"Resolución","stage":"OTROS","type":"OTROS"}`)))
+	if response.Code != 201 || fake.expedienteID != 42 || fake.input.Stage != "OTROS" || fake.input.Type != "OTROS" {
 		t.Fatal("document creation endpoint failed")
 	}
 	response = httptest.NewRecorder()
@@ -252,13 +252,13 @@ func TestParticipantEndpoints(t *testing.T) {
 		method, path, body string
 		status             int
 	}{
-		{"POST", "/denunciantes", `{"name":"Ana"}`, 201},
+		{"POST", "/denunciantes", `{"name":"Ana"}`, 404},
 		{"GET", "/denunciantes?limit=10", ``, 200},
-		{"POST", "/denunciados", `{"name":"Luis"}`, 201},
+		{"POST", "/denunciados", `{"name":"Luis"}`, 404},
 		{"GET", "/denunciados", ``, 200},
-		{"POST", "/expedientes/4/denunciantes", `{"denunciante_id":1}`, 201},
-		{"POST", "/expedientes/4/denunciados", `{"denunciado_id":2}`, 201},
-		{"POST", "/expedientes/x/denunciantes", `{"denunciante_id":1}`, 400},
+		{"POST", "/expedientes/4/denunciantes", `{"denunciante_id":1}`, 405},
+		{"POST", "/expedientes/4/denunciados", `{"denunciado_id":2}`, 405},
+		{"POST", "/expedientes/x/denunciantes", `{"denunciante_id":1}`, 405},
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, strings.NewReader(test.body)))
@@ -268,7 +268,7 @@ func TestParticipantEndpoints(t *testing.T) {
 	}
 }
 
-func TestActiveParticipantsByExpedienteHTTP(t *testing.T) {
+func TestFixedParticipantsByExpedienteHTTP(t *testing.T) {
 	for _, kind := range []string{"denunciantes", "denunciados"} {
 		for _, tc := range []struct {
 			id     string
@@ -295,15 +295,67 @@ func TestActiveParticipantsByExpedienteHTTP(t *testing.T) {
 				t.Fatal("exposed database error")
 			}
 		}
-		fake := &fakeParticipants{list: []services.ParticipantMembershipResponse{{ID: 5, ExpedienteID: 42, Participant: services.ParticipantResponse{ID: 2, Name: "Ana"}, IsActive: true}}}
+		fake := &fakeParticipants{list: []services.ParticipantMembershipResponse{{ID: 5, ExpedienteID: 42, Participant: services.ParticipantResponse{ID: 2, Name: "Ana"}}}}
 		response := httptest.NewRecorder()
 		Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, fake).ServeHTTP(response, httptest.NewRequest("GET", "/expedientes/42/"+kind, nil))
 		var result []services.ParticipantMembershipResponse
 		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result) != 1 {
 			t.Fatal("invalid membership response")
 		}
-		if result[0].ID != 5 || result[0].Participant.ID != 2 || !result[0].IsActive {
+		if result[0].ID != 5 || result[0].Participant.ID != 2 {
 			t.Fatal("incorrect membership identifiers")
+		}
+	}
+}
+
+func TestFixedParticipantsCannotBeRemovedHTTP(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
+	for _, kind := range []string{"denunciantes", "denunciados"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("DELETE", "/expedientes/42/"+kind+"/2", nil))
+		if w.Code != 404 {
+			t.Fatalf("DELETE %s: got %d", kind, w.Code)
+		}
+	}
+}
+
+func (f *fakeDocuments) ListTypes(context.Context) ([]services.DocumentTypeEntry, error) {
+	return []services.DocumentTypeEntry{{ID: 1, Code: "OTROS", Name: "OTROS", SortOrder: 1}}, f.err
+}
+
+func TestDocumentTypesDictionaryHTTP(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+	}{{nil, 200}, {errors.New("database failed"), 500}} {
+		w := httptest.NewRecorder()
+		Routes(nil, &fakeExpedientes{}, &fakeDocuments{err: tc.err}, &fakeParticipants{}).ServeHTTP(w, httptest.NewRequest("GET", "/document-types", nil))
+		if w.Code != tc.status {
+			t.Fatalf("got %d want %d", w.Code, tc.status)
+		}
+		if tc.status == 200 && !strings.Contains(w.Body.String(), "OTROS") {
+			t.Fatal("missing dictionary option")
+		}
+	}
+}
+
+func TestInitialParticipantLoadRoutes(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, kind := range []string{"denunciantes", "denunciados"} {
+			handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{}, RoutesOption{EnableInitialParticipantLoad: enabled})
+			w := httptest.NewRecorder()
+			body := `{"name":"Initial participant","document_type":"DNI","document_number":"00123456"}`
+			if kind == "denunciados" {
+				body = `{"name":"Initial participant","document_type":"DNI","document_number":"00123456","registration_number":123}`
+			}
+			handler.ServeHTTP(w, httptest.NewRequest("POST", "/"+kind, strings.NewReader(body)))
+			want := 404
+			if enabled {
+				want = 201
+			}
+			if w.Code != want {
+				t.Fatalf("%s enabled=%v: got %d want %d", kind, enabled, w.Code, want)
+			}
 		}
 	}
 }

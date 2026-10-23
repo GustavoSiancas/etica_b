@@ -11,16 +11,17 @@ import (
 )
 
 type Config struct {
-	HTTPAddr            string
-	R2PublicURL         string
-	DatabaseURL         string
-	R2Endpoint          string
-	R2Region            string
-	R2Bucket            string
-	R2AccessKeyID       string
-	R2SecretAccessKey   string
-	EnableDemoReset     bool
-	EnableDatabaseClear bool
+	EnableInitialParticipantLoad bool
+	HTTPAddr                     string
+	R2PublicURL                  string
+	DatabaseURL                  string
+	R2Endpoint                   string
+	R2Region                     string
+	R2Bucket                     string
+	R2AccessKeyID                string
+	R2SecretAccessKey            string
+	EnableDemoReset              bool
+	EnableDatabaseClear          bool
 }
 
 // Load preserves environment variables supplied by the deployment platform.
@@ -58,7 +59,7 @@ func Load() (Config, error) {
 	if addr == "" {
 		addr = ":8080"
 	}
-	return Config{HTTPAddr: addr, R2PublicURL: os.Getenv("R2_PUBLIC_URL"), DatabaseURL: db.String(), R2Endpoint: endpoint, R2Region: region, R2Bucket: os.Getenv("R2_BUCKET"), R2AccessKeyID: os.Getenv("R2_ACCESS_KEY_ID"), R2SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"), EnableDatabaseClear: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_DATABASE_CLEAR")), "true"), EnableDemoReset: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_DEMO_RESET")), "true")}, nil
+	return Config{EnableInitialParticipantLoad: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_INITIAL_PARTICIPANT_LOAD")), "true"), HTTPAddr: addr, R2PublicURL: os.Getenv("R2_PUBLIC_URL"), DatabaseURL: db.String(), R2Endpoint: endpoint, R2Region: region, R2Bucket: os.Getenv("R2_BUCKET"), R2AccessKeyID: os.Getenv("R2_ACCESS_KEY_ID"), R2SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"), EnableDatabaseClear: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_DATABASE_CLEAR")), "true"), EnableDemoReset: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_DEMO_RESET")), "true")}, nil
 }
 
 func loadEnvFile(path string) error {

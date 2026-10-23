@@ -1,64 +1,57 @@
 # Denunciantes y denunciados
 
-Denunciantes y denunciados son registros referenciales con nombre. No se exige que el nombre sea único y se puede asociar el mismo registro con varios expedientes. No se envían datos personales adicionales.
+Denunciantes y denunciados tienen ID, nombre, tipo y numero de documento. Los denunciados tienen ademas numero de colegiatura. Un mismo registro puede asociarse a varios expedientes; el nombre no es unico.
 
-## Crear y listar
+## Carga inicial y listado
 
-`POST /denunciantes` y `POST /denunciados` reciben:
+`POST /denunciantes` y `POST /denunciados` estan desactivados por defecto (404). Solo se habilitan con `ENABLE_INITIAL_PARTICIPANT_LOAD=true` durante la carga inicial. Al terminar, volver a false y reiniciar la aplicacion. La bandera no modifica los datos ni afecta los GET. El seed SQL sigue siendo otra forma de carga inicial.
 
-```json
-{"name":"Nombre de la persona"}
-```
-
-Devuelven `201 Created` con `{ "id": 1, "name": "Nombre de la persona" }`. El nombre es obligatorio; se recortan espacios exteriores y se permiten hasta 255 caracteres.
-
-`GET /denunciantes?limit=20&offset=0` y `GET /denunciados?limit=20&offset=0` devuelven:
+`POST /denunciantes` recibe todos estos campos obligatorios:
 
 ```json
-{"data":[{"id":1,"name":"Nombre de la persona"}],"total":1,"limit":20,"offset":0}
+{"name":"Maria Perez","document_type":"DNI","document_number":"00123456"}
 ```
 
-El orden es por ID ascendente; limit acepta 1–100 y offset debe ser no negativo.
+`document_type` permite `DNI`, `RUC` o `CE`.
 
-## Asociar al expediente
-
-`POST /expedientes/{expediente_id}/denunciantes`:
+`POST /denunciados` recibe todos estos campos obligatorios:
 
 ```json
-{"denunciante_id":1}
+{"name":"Luis Perez","document_type":"CE","document_number":"000123456","registration_number":12345}
 ```
 
-`POST /expedientes/{expediente_id}/denunciados`:
+Para denunciados, `document_type` permite solo `DNI` o `CE`; `registration_number` es un entero positivo (colegiatura). El numero de documento se envia como texto de 1 a 20 digitos para conservar ceros iniciales. El servicio recorta espacios y normaliza el tipo a mayusculas. No valida contra un padron externo ni impone unicidad del documento o colegiatura.
+
+Los GET de participantes, las asociaciones al expediente y los remitentes de escritos incluyen estos campos. Los registros anteriores conservan `document_type` y `document_number` en `null`; la colegiatura desconocida se omite. No se inventan documentos para datos existentes.
+
+`GET /denunciantes?limit=20&offset=0` y `GET /denunciados?limit=20&offset=0` devuelven una pagina con `data`, `total`, `limit` y `offset`.
+
+## Asociar al crear el expediente
+
+Enviar los IDs existentes en `POST /expedientes`:
 
 ```json
-{"denunciado_id":2}
+{
+  "description":"Descripcion del caso",
+  "opening_date":"2026-10-22",
+  "init_type":"DENUNCIA_DE_PARTE",
+  "denunciante_ids":[1,2],
+  "denunciado_ids":[3]
+}
 ```
 
-Cada endpoint devuelve `201 Created` con el ID de la relación, expediente, persona y `is_active: true`. La relación duplicada y ya activa devuelve `409`; expediente inexistente, `404`; persona inexistente, `404`. Las claves foráneas y restricciones únicas de las migraciones protegen la relación.
+El expediente y todas sus asociaciones se guardan en una sola transaccion. Si un ID no existe, devuelve 404 y no se crea el expediente. IDs no positivos o repetidos dentro de una lista devuelven 400. Las listas pueden omitirse o enviarse vacias cuando no corresponda; un mismo ID numerico puede aparecer en ambos roles porque son tablas distintas.
 
-Las asociaciones se conservan en `expediente_denunciantes` y `expediente_denunciados` con `is_active`. Para retirar sin borrar la relación, llamar `DELETE /expedientes/{expediente_id}/denunciantes/{denunciante_id}` o `DELETE /expedientes/{expediente_id}/denunciados/{denunciado_id}`. La respuesta es `204`. La asociación pasa a inactiva. Un retiro repetido devuelve `404`.
+Las asociaciones son permanentes, sin estado, fecha de ingreso ni historial. Las rutas POST para agregar participantes a un expediente existente ya no estan disponibles. Los participantes del expediente se definen durante su creacion.
 
-Al asociar de nuevo una persona previamente retirada, se reactiva la misma fila, conserva su ID y crea un nuevo evento `ADDED`. No se crea una relación duplicada. Si ya está activa, devuelve `409`.
+## Listar participantes del expediente
 
-Cada activación y retiro y su evento `ADDED`/`REMOVED` del historial se guardan juntos en una transacción. El historial contiene tipo, ID y snapshot del nombre para poder reconstruir el cambio. No se crean estados o fechas de notificación y no se borran físicamente las asociaciones.
-
-## Ejemplo PowerShell
-
-```powershell
-$p = Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/denunciantes' -ContentType 'application/json' -Body '{"name":"María Pérez"}'
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/denunciantes'
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/expedientes/1/denunciantes" -ContentType 'application/json' -Body "{`"denunciante_id`":$($p.id)}"
-Invoke-RestMethod -Method Delete -Uri "http://localhost:8080/expedientes/1/denunciantes/$($p.id)"
-```
-
-## Listar participantes activos del expediente
-
-`GET /expedientes/{id}/denunciantes` y `GET /expedientes/{id}/denunciados` devuelven solo asociaciones activas del expediente, ordenadas por ID de asociaci?n ascendente, sin paginaci?n.
+`GET /expedientes/{id}/denunciantes` y `GET /expedientes/{id}/denunciados` devuelven todas las asociaciones permanentes del expediente, ordenadas por ID de asociaci?n ascendente, sin paginaci?n.
 
 ```json
 [
-  {"id":5,"expediente_id":1,"participant":{"id":2,"name":"Ana"},"is_active":true}
+  {"id":5,"expediente_id":1,"participant":{"id":2,"name":"Ana","document_type":"DNI","document_number":"00123456"}}
 ]
 ```
 
-`id` es el ID de la asociaci?n (para referencias en documentos); `participant.id` es el ID de la persona (para retirarla del expediente). Devuelven `200` y `[]` si el expediente existe sin participantes activos, `400` para un ID inv?lido y `404` si el expediente no existe.
+`id` identifica la asociacion y `participant.id` identifica la persona. Devuelven `200` y `[]` si el expediente existe sin participantes, `400` para un ID invalido y `404` si el expediente no existe.

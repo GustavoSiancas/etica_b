@@ -1,13 +1,8 @@
 BEGIN;
 DROP TABLE escrito_denunciados, escrito_denunciantes, escritos;
-DROP TRIGGER participant_history_no_truncate ON expediente_participant_history;
-DROP TRIGGER participant_history_immutable ON expediente_participant_history;
-DROP FUNCTION protect_participant_history();
-DROP TABLE expediente_participant_history;
-DROP TABLE document_denunciados, document_denunciantes;
 DROP TABLE expediente_denunciados, expediente_denunciantes;
 DROP TABLE denunciados, denunciantes;
-DROP TABLE documents, document_substages, document_stages;
+DROP TABLE documents, document_substages, document_stages, document_types;
 DROP TRIGGER expediente_auto_code ON expedientes;
 DROP FUNCTION assign_expediente_code();
 DROP FUNCTION next_expediente_code(INTEGER);

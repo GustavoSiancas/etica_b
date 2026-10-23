@@ -1,58 +1,24 @@
-# Documentos del expediente
+# Documentos y diccionarios
 
-Los documentos pertenecen a un expediente y a una subetapa. La etapa principal se obtiene a través de ella. La URL HTTPS es opcional; el binario se sube a R2 mediante el flujo de firma descrito en `docs/uploads.md`.
-
-## Cat?logo de etapas y subetapas
-
-`GET /document-stages` devuelve todas las etapas y subetapas activas. Cada etapa incluye una lista `substages`; ambos niveles est?n ordenados por `sort_order` ascendente (con ID como desempate). Las listas se devuelven vac?as, no `null`, cuando no hay elementos.
+`POST /expedientes/{id}/documents` recibe:
 
 ```json
-[
-  {
-    "id": 1,
-    "code": "CALIFICACION_DENUNCIA",
-    "name": "Calificaci?n de la denuncia.",
-    "sort_order": 1,
-    "substages": [
-      {"id": 1, "code": "CALIFICACION", "name": "Calificaci?n de la denuncia.", "sort_order": 1}
-    ]
-  }
-]
+{"title":"Documento recibido","stage":"Calificacion de la denuncia.","type":"OTROS","document_date":"2026-10-22","file_url":null}
 ```
 
-Usa el `id` de cada subetapa como `substage_id` al crear un documento.
+`title`, `stage` y `type` son obligatorios. El titulo admite hasta 255 caracteres. `stage` y `type` se guardan como TEXT, se recortan y no pueden estar vacios. No son IDs, enums ni claves foraneas. Se acepta cualquier texto valido, incluido `OTROS`.
 
-## Crear
+En `stage` se envia el nombre de la etapa general o de una subetapa seleccionada. No es necesario elegir una subetapa. La respuesta devuelve `stage` y `type` como cadenas, sin objeto `substage` ni `substage_id`.
 
-`POST /expedientes/{expediente_id}/documents`
+`document_date` es una fecha opcional YYYY-MM-DD y `file_url` es una URL HTTPS opcional. El documento pertenece al expediente y comienza en DRAFT. Devuelve 201, 400 por datos invalidos y 404 si el expediente no existe.
 
-```json
-{
-  "title": "Resolución de calificación",
-  "substage_id": 3,
-  "document_date": "2026-10-15",
-  "file_url": "https://archivos.example.com/documents/1/archivo.pdf"
-}
-```
+## Selectores del frontend
 
-`title` es obligatorio (máximo 255 caracteres). `substage_id` identifica una subetapa activa. `document_date` (YYYY-MM-DD) y `file_url` son opcionales; la URL debe ser HTTPS. El estado se asigna `DRAFT`.
+- `GET /document-stages`: etapas activas, ordenadas, con sus subetapas en `substages`. Cada entrada tiene `id`, `code`, `name` y `sort_order`. El frontend puede seleccionar una etapa general o una subetapa y enviar su `name` en `stage`.
+- `GET /document-types`: tipos activos, ordenados, con `id`, `code`, `name` y `sort_order`. Enviar su `name` en `type`.
 
-Al crear el documento, el servicio busca dentro del expediente a todos los denunciantes y denunciados activos y crea sus relaciones autom?ticamente en la misma transacci?n. El cliente no env?a IDs de participantes. Si el expediente no tiene participantes activos de un tipo, el arreglo correspondiente queda vac?o.
+Son diccionarios de sugerencias. Cambiar o retirar una opcion no altera los documentos guardados. El diccionario inicial de tipos contiene Escrito de oficio, Resolución y OTROS. El de etapas conserva las cinco etapas y quince subetapas, mas OTROS como etapa general. Se pueden cargar mas opciones sin cambiar el contrato.
 
-Devuelve `201 Created` con el documento, su subetapa y etapa, y arreglos con los denunciantes y denunciados asociados. `400` indica datos inválidos, subetapa inexistente/inactiva o referencias no válidas. `404` indica expediente inexistente. La operación completa se guarda junta: un error al insertar referencias revierte también el documento.
+`GET /expedientes/{id}/documents` devuelve todos los documentos por fecha ascendente (nulos al final), luego created_at e ID. No depende de los diccionarios ni agrupa por etapa.
 
-## Listar por expediente
-
-`GET /expedientes/{expediente_id}/documents`
-
-Devuelve un arreglo vacío si el expediente existe y todavía no tiene documentos. Cada documento incluye subetapa, etapa y referencias individuales. Ordena por `stage.sort_order`, luego `substage.sort_order`, fecha documental ascendente (fechas vacías al final) y finalmente ID.
-
-Un ID de expediente inválido devuelve `400`; si no existe devuelve `404`.
-
-## Ejemplo PowerShell
-
-```powershell
-$body = '{"title":"Resolución","substage_id":3,"document_date":"2026-10-15","denunciante_ids":[4],"denunciado_ids":[12]}'
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/expedientes/1/documents' -ContentType 'application/json' -Body $body
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/expedientes/1/documents'
-```
+Los participantes se consultan desde el expediente, con sus endpoints de denunciantes y denunciados. Los documentos no guardan listas de participantes.

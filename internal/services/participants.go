@@ -13,44 +13,70 @@ import (
 var ErrParticipantInvalid = errors.New("invalid participant")
 var ErrParticipantNotFound = errors.New("participant not found")
 var ErrParticipantDuplicate = errors.New("participant already belongs to expediente")
-var ErrMembershipNotFound = errors.New("participant membership is not active")
 
-type ParticipantResponse struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+type CreateDenuncianteInput struct {
+	Name           string `json:"name"`
+	DocumentType   string `json:"document_type"`
+	DocumentNumber string `json:"document_number"`
 }
+type CreateDenunciadoInput struct {
+	Name               string `json:"name"`
+	DocumentType       string `json:"document_type"`
+	DocumentNumber     string `json:"document_number"`
+	RegistrationNumber int64  `json:"registration_number"`
+}
+type ParticipantResponse struct {
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	DocumentType       *string `json:"document_type"`
+	DocumentNumber     *string `json:"document_number"`
+	RegistrationNumber *int64  `json:"registration_number,omitempty"`
+}
+
+func denuncianteResponse(row models.Denunciante) ParticipantResponse {
+	return ParticipantResponse{ID: row.ID, Name: row.Name, DocumentType: row.DocumentType, DocumentNumber: row.DocumentNumber}
+}
+func denunciadoResponse(row models.Denunciado) ParticipantResponse {
+	return ParticipantResponse{ID: row.ID, Name: row.Name, DocumentType: row.DocumentType, DocumentNumber: row.DocumentNumber, RegistrationNumber: row.RegistrationNumber}
+}
+
 type ParticipantMembershipResponse struct {
 	ID           int64               `json:"id"`
 	ExpedienteID int64               `json:"expediente_id"`
 	Participant  ParticipantResponse `json:"participant"`
-	IsActive     bool                `json:"is_active"`
 }
 type ParticipantService struct{ db *gorm.DB }
 
 func NewParticipantService(db *gorm.DB) *ParticipantService { return &ParticipantService{db: db} }
 
-func (s *ParticipantService) CreateDenunciante(ctx context.Context, name string) (ParticipantResponse, error) {
-	name, err := validateParticipantName(name)
-	if err != nil {
+func (s *ParticipantService) CreateDenunciante(ctx context.Context, input CreateDenuncianteInput) (ParticipantResponse, error) {
+	name, err := validateParticipantName(input.Name)
+	docType := strings.ToUpper(strings.TrimSpace(input.DocumentType))
+	docNumber := strings.TrimSpace(input.DocumentNumber)
+	if err != nil || !validParticipantDocument(docType, docNumber, true) {
+		return ParticipantResponse{}, ErrParticipantInvalid
+	}
+	row := models.Denunciante{Name: name, DocumentType: &docType, DocumentNumber: &docNumber}
+	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return ParticipantResponse{}, err
 	}
-	row := models.Denunciante{Name: name}
-	if err = s.db.WithContext(ctx).Create(&row).Error; err != nil {
-		return ParticipantResponse{}, err
-	}
-	return ParticipantResponse{ID: row.ID, Name: row.Name}, nil
+	return denuncianteResponse(row), nil
 }
-func (s *ParticipantService) CreateDenunciado(ctx context.Context, name string) (ParticipantResponse, error) {
-	name, err := validateParticipantName(name)
-	if err != nil {
+
+func (s *ParticipantService) CreateDenunciado(ctx context.Context, input CreateDenunciadoInput) (ParticipantResponse, error) {
+	name, err := validateParticipantName(input.Name)
+	docType := strings.ToUpper(strings.TrimSpace(input.DocumentType))
+	docNumber := strings.TrimSpace(input.DocumentNumber)
+	if err != nil || !validParticipantDocument(docType, docNumber, false) || input.RegistrationNumber <= 0 {
+		return ParticipantResponse{}, ErrParticipantInvalid
+	}
+	row := models.Denunciado{Name: name, DocumentType: &docType, DocumentNumber: &docNumber, RegistrationNumber: &input.RegistrationNumber}
+	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return ParticipantResponse{}, err
 	}
-	row := models.Denunciado{Name: name}
-	if err = s.db.WithContext(ctx).Create(&row).Error; err != nil {
-		return ParticipantResponse{}, err
-	}
-	return ParticipantResponse{ID: row.ID, Name: row.Name}, nil
+	return denunciadoResponse(row), nil
 }
+
 func validateParticipantName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || !utf8.ValidString(name) || utf8.RuneCountInString(name) > 255 || strings.ContainsRune(name, 0) {
@@ -74,7 +100,7 @@ func (s *ParticipantService) ListDenunciantes(ctx context.Context, limit, offset
 	}
 	result := make([]ParticipantResponse, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, ParticipantResponse{ID: row.ID, Name: row.Name})
+		result = append(result, denuncianteResponse(row))
 	}
 	return result, total, nil
 }
@@ -93,7 +119,7 @@ func (s *ParticipantService) ListDenunciados(ctx context.Context, limit, offset 
 	}
 	result := make([]ParticipantResponse, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, ParticipantResponse{ID: row.ID, Name: row.Name})
+		result = append(result, denunciadoResponse(row))
 	}
 	return result, total, nil
 }
@@ -116,31 +142,14 @@ func (s *ParticipantService) AttachDenunciante(ctx context.Context, expedienteID
 		} else if err != nil {
 			return err
 		}
-		membership := models.ExpedienteDenunciante{ExpedienteID: expedienteID, DenuncianteID: participantID, IsActive: true}
-		err := tx.Where("expediente_id = ? AND denunciante_id = ?", expedienteID, participantID).First(&membership).Error
-		if err == nil {
-			if membership.IsActive {
+		membership := models.ExpedienteDenunciante{ExpedienteID: expedienteID, DenuncianteID: participantID}
+		if err := tx.Create(&membership).Error; err != nil {
+			if duplicate(err) {
 				return ErrParticipantDuplicate
 			}
-			if err = tx.Model(&membership).Update("is_active", true).Error; err != nil {
-				return err
-			}
-			membership.IsActive = true
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err = tx.Create(&membership).Error; err != nil {
-				if duplicate(err) {
-					return ErrParticipantDuplicate
-				}
-				return err
-			}
-		} else {
 			return err
 		}
-		history := models.ExpedienteParticipantHistory{ExpedienteID: expedienteID, ParticipantType: "DENUNCIANTE", ParticipantID: participantID, Action: "ADDED", NewName: &participant.Name}
-		if err := tx.Create(&history).Error; err != nil {
-			return err
-		}
-		result = ParticipantMembershipResponse{ID: membership.ID, ExpedienteID: expedienteID, Participant: ParticipantResponse{ID: participant.ID, Name: participant.Name}, IsActive: true}
+		result = ParticipantMembershipResponse{ID: membership.ID, ExpedienteID: expedienteID, Participant: denuncianteResponse(participant)}
 		return nil
 	})
 	return result, err
@@ -163,81 +172,17 @@ func (s *ParticipantService) AttachDenunciado(ctx context.Context, expedienteID,
 		} else if err != nil {
 			return err
 		}
-		membership := models.ExpedienteDenunciado{ExpedienteID: expedienteID, DenunciadoID: participantID, IsActive: true}
-		err := tx.Where("expediente_id = ? AND denunciado_id = ?", expedienteID, participantID).First(&membership).Error
-		if err == nil {
-			if membership.IsActive {
+		membership := models.ExpedienteDenunciado{ExpedienteID: expedienteID, DenunciadoID: participantID}
+		if err := tx.Create(&membership).Error; err != nil {
+			if duplicate(err) {
 				return ErrParticipantDuplicate
 			}
-			if err = tx.Model(&membership).Update("is_active", true).Error; err != nil {
-				return err
-			}
-			membership.IsActive = true
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err = tx.Create(&membership).Error; err != nil {
-				if duplicate(err) {
-					return ErrParticipantDuplicate
-				}
-				return err
-			}
-		} else {
 			return err
 		}
-		history := models.ExpedienteParticipantHistory{ExpedienteID: expedienteID, ParticipantType: "DENUNCIADO", ParticipantID: participantID, Action: "ADDED", NewName: &participant.Name}
-		if err := tx.Create(&history).Error; err != nil {
-			return err
-		}
-		result = ParticipantMembershipResponse{ID: membership.ID, ExpedienteID: expedienteID, Participant: ParticipantResponse{ID: participant.ID, Name: participant.Name}, IsActive: true}
+		result = ParticipantMembershipResponse{ID: membership.ID, ExpedienteID: expedienteID, Participant: denunciadoResponse(participant)}
 		return nil
 	})
 	return result, err
-}
-
-func (s *ParticipantService) RemoveDenunciante(ctx context.Context, expedienteID, participantID int64) error {
-	if expedienteID <= 0 || participantID <= 0 {
-		return ErrParticipantInvalid
-	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var membership models.ExpedienteDenunciante
-		err := tx.Where("expediente_id = ? AND denunciante_id = ? AND is_active = TRUE", expedienteID, participantID).First(&membership).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrMembershipNotFound
-		}
-		if err != nil {
-			return err
-		}
-		var person models.Denunciante
-		if err = tx.First(&person, participantID).Error; err != nil {
-			return err
-		}
-		if err = tx.Model(&membership).Update("is_active", false).Error; err != nil {
-			return err
-		}
-		return tx.Create(&models.ExpedienteParticipantHistory{ExpedienteID: expedienteID, ParticipantType: "DENUNCIANTE", ParticipantID: participantID, Action: "REMOVED", PreviousName: &person.Name}).Error
-	})
-}
-func (s *ParticipantService) RemoveDenunciado(ctx context.Context, expedienteID, participantID int64) error {
-	if expedienteID <= 0 || participantID <= 0 {
-		return ErrParticipantInvalid
-	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var membership models.ExpedienteDenunciado
-		err := tx.Where("expediente_id = ? AND denunciado_id = ? AND is_active = TRUE", expedienteID, participantID).First(&membership).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrMembershipNotFound
-		}
-		if err != nil {
-			return err
-		}
-		var person models.Denunciado
-		if err = tx.First(&person, participantID).Error; err != nil {
-			return err
-		}
-		if err = tx.Model(&membership).Update("is_active", false).Error; err != nil {
-			return err
-		}
-		return tx.Create(&models.ExpedienteParticipantHistory{ExpedienteID: expedienteID, ParticipantType: "DENUNCIADO", ParticipantID: participantID, Action: "REMOVED", PreviousName: &person.Name}).Error
-	})
 }
 
 func duplicate(err error) bool {
@@ -245,7 +190,7 @@ func duplicate(err error) bool {
 	return errors.Is(err, gorm.ErrDuplicatedKey) || (errors.As(err, &pgErr) && pgErr.SQLState() == "23505")
 }
 
-// ListDenunciantesByExpediente returns only active memberships, ordered by membership ID.
+// ListDenunciantesByExpediente returns fixed memberships, ordered by membership ID.
 func (s *ParticipantService) ListDenunciantesByExpediente(ctx context.Context, expedienteID int64) ([]ParticipantMembershipResponse, error) {
 	if expedienteID <= 0 {
 		return nil, ErrParticipantInvalid
@@ -258,17 +203,17 @@ func (s *ParticipantService) ListDenunciantesByExpediente(ctx context.Context, e
 		return nil, err
 	}
 	var rows []models.ExpedienteDenunciante
-	if err := db.Where("expediente_id = ? AND is_active = ?", expedienteID, true).Preload("Denunciante").Order("id ASC").Find(&rows).Error; err != nil {
+	if err := db.Where("expediente_id = ?", expedienteID).Preload("Denunciante").Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	result := make([]ParticipantMembershipResponse, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, ParticipantMembershipResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, Participant: ParticipantResponse{ID: row.Denunciante.ID, Name: row.Denunciante.Name}, IsActive: row.IsActive})
+		result = append(result, ParticipantMembershipResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, Participant: denuncianteResponse(row.Denunciante)})
 	}
 	return result, nil
 }
 
-// ListDenunciadosByExpediente returns only active memberships, ordered by membership ID.
+// ListDenunciadosByExpediente returns fixed memberships, ordered by membership ID.
 func (s *ParticipantService) ListDenunciadosByExpediente(ctx context.Context, expedienteID int64) ([]ParticipantMembershipResponse, error) {
 	if expedienteID <= 0 {
 		return nil, ErrParticipantInvalid
@@ -281,12 +226,41 @@ func (s *ParticipantService) ListDenunciadosByExpediente(ctx context.Context, ex
 		return nil, err
 	}
 	var rows []models.ExpedienteDenunciado
-	if err := db.Where("expediente_id = ? AND is_active = ?", expedienteID, true).Preload("Denunciado").Order("id ASC").Find(&rows).Error; err != nil {
+	if err := db.Where("expediente_id = ?", expedienteID).Preload("Denunciado").Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	result := make([]ParticipantMembershipResponse, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, ParticipantMembershipResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, Participant: ParticipantResponse{ID: row.Denunciado.ID, Name: row.Denunciado.Name}, IsActive: row.IsActive})
+		result = append(result, ParticipantMembershipResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, Participant: denunciadoResponse(row.Denunciado)})
 	}
 	return result, nil
+}
+
+func validParticipantDocument(kind, number string, allowRUC bool) bool {
+	if kind != "DNI" && kind != "CE" && !(allowRUC && kind == "RUC") {
+		return false
+	}
+	if len(number) == 0 || len(number) > 20 {
+		return false
+	}
+	for _, digit := range number {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validParticipantIDs(ids []int64) bool {
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return false
+		}
+		if _, exists := seen[id]; exists {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
 }

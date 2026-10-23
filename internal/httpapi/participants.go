@@ -10,17 +10,13 @@ import (
 type ParticipantAPI interface {
 	ListDenunciantesByExpediente(context.Context, int64) ([]services.ParticipantMembershipResponse, error)
 	ListDenunciadosByExpediente(context.Context, int64) ([]services.ParticipantMembershipResponse, error)
-	CreateDenunciante(context.Context, string) (services.ParticipantResponse, error)
-	CreateDenunciado(context.Context, string) (services.ParticipantResponse, error)
+	CreateDenunciante(context.Context, services.CreateDenuncianteInput) (services.ParticipantResponse, error)
+	CreateDenunciado(context.Context, services.CreateDenunciadoInput) (services.ParticipantResponse, error)
 	ListDenunciantes(context.Context, int, int) ([]services.ParticipantResponse, int64, error)
 	ListDenunciados(context.Context, int, int) ([]services.ParticipantResponse, int64, error)
-	AttachDenunciante(context.Context, int64, int64) (services.ParticipantMembershipResponse, error)
-	AttachDenunciado(context.Context, int64, int64) (services.ParticipantMembershipResponse, error)
-	RemoveDenunciante(context.Context, int64, int64) error
-	RemoveDenunciado(context.Context, int64, int64) error
 }
 
-func registerParticipants(mux *http.ServeMux, service ParticipantAPI) {
+func registerParticipants(mux *http.ServeMux, service ParticipantAPI, initialLoad bool) {
 	mux.HandleFunc("GET /expedientes/{id}/denunciados", func(w http.ResponseWriter, r *http.Request) {
 		id, err := parsePositiveID(r.PathValue("id"))
 		if err != nil {
@@ -50,13 +46,15 @@ func registerParticipants(mux *http.ServeMux, service ParticipantAPI) {
 	})
 
 	mux.HandleFunc("POST /denunciantes", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Name string `json:"name"`
+		if !initialLoad {
+			http.NotFound(w, r)
+			return
 		}
+		var input services.CreateDenuncianteInput
 		if !decode(w, r, &input) {
 			return
 		}
-		result, err := service.CreateDenunciante(r.Context(), input.Name)
+		result, err := service.CreateDenunciante(r.Context(), input)
 		if err != nil {
 			failure(w, err)
 			return
@@ -64,13 +62,15 @@ func registerParticipants(mux *http.ServeMux, service ParticipantAPI) {
 		respond(w, http.StatusCreated, result)
 	})
 	mux.HandleFunc("POST /denunciados", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Name string `json:"name"`
+		if !initialLoad {
+			http.NotFound(w, r)
+			return
 		}
+		var input services.CreateDenunciadoInput
 		if !decode(w, r, &input) {
 			return
 		}
-		result, err := service.CreateDenunciado(r.Context(), input.Name)
+		result, err := service.CreateDenunciado(r.Context(), input)
 		if err != nil {
 			failure(w, err)
 			return
@@ -103,70 +103,7 @@ func registerParticipants(mux *http.ServeMux, service ParticipantAPI) {
 		}
 		respond(w, 200, map[string]any{"data": data, "total": total, "limit": limit, "offset": offset})
 	})
-	mux.HandleFunc("POST /expedientes/{id}/denunciantes", func(w http.ResponseWriter, r *http.Request) {
-		id, err := parsePositiveID(r.PathValue("id"))
-		if err != nil {
-			failure(w, services.ErrParticipantInvalid)
-			return
-		}
-		var input struct {
-			ID int64 `json:"denunciante_id"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		result, err := service.AttachDenunciante(r.Context(), id, input.ID)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, 201, result)
-	})
-	mux.HandleFunc("POST /expedientes/{id}/denunciados", func(w http.ResponseWriter, r *http.Request) {
-		id, err := parsePositiveID(r.PathValue("id"))
-		if err != nil {
-			failure(w, services.ErrParticipantInvalid)
-			return
-		}
-		var input struct {
-			ID int64 `json:"denunciado_id"`
-		}
-		if !decode(w, r, &input) {
-			return
-		}
-		result, err := service.AttachDenunciado(r.Context(), id, input.ID)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, 201, result)
-	})
-	mux.HandleFunc("DELETE /expedientes/{id}/denunciantes/{participant_id}", func(w http.ResponseWriter, r *http.Request) {
-		expedienteID, err := parsePositiveID(r.PathValue("id"))
-		participantID, idErr := parsePositiveID(r.PathValue("participant_id"))
-		if err != nil || idErr != nil {
-			failure(w, services.ErrParticipantInvalid)
-			return
-		}
-		if err = service.RemoveDenunciante(r.Context(), expedienteID, participantID); err != nil {
-			failure(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc("DELETE /expedientes/{id}/denunciados/{participant_id}", func(w http.ResponseWriter, r *http.Request) {
-		expedienteID, err := parsePositiveID(r.PathValue("id"))
-		participantID, idErr := parsePositiveID(r.PathValue("participant_id"))
-		if err != nil || idErr != nil {
-			failure(w, services.ErrParticipantInvalid)
-			return
-		}
-		if err = service.RemoveDenunciado(r.Context(), expedienteID, participantID); err != nil {
-			failure(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
+
 }
 
 func participantPage(r *http.Request) (int, int, bool) {

@@ -11,9 +11,10 @@ import (
 )
 
 type RoutesOption struct {
-	Escrito       EscritoAPI
-	DemoData      DemoDataAPI
-	DatabaseClear DatabaseClearAPI
+	EnableInitialParticipantLoad bool
+	Escrito                      EscritoAPI
+	DemoData                     DemoDataAPI
+	DatabaseClear                DatabaseClearAPI
 }
 
 type DatabaseClearAPI interface {
@@ -28,7 +29,9 @@ type DemoDataAPI interface {
 func Routes(service *services.UploadService, expedientes ExpedienteAPI, documents DocumentAPI, participants ParticipantAPI, options ...RoutesOption) http.Handler {
 	mux := http.NewServeMux()
 	registerSwagger(mux)
-	registerExpedientes(mux, expedientes, documents, participants)
+	registerExpedientes(mux, expedientes, documents)
+	initialLoad := len(options) > 0 && options[0].EnableInitialParticipantLoad
+	registerParticipants(mux, participants, initialLoad)
 	if len(options) > 0 {
 		if clear := options[0].DatabaseClear; clear != nil {
 			mux.HandleFunc("DELETE /dev/database/clear", func(w http.ResponseWriter, r *http.Request) {
@@ -173,28 +176,22 @@ func failure(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, services.ErrParticipantInvalid):
 		status = 400
-		message = "invalid participant name, identifier or pagination"
+		message = "invalid participant name, document type, document number, registration number, identifier or pagination"
 	case errors.Is(err, services.ErrParticipantNotFound):
 		status = 404
 		message = "participant not found"
 	case errors.Is(err, services.ErrParticipantDuplicate):
 		status = 409
 		message = "participant already belongs to expediente"
-	case errors.Is(err, services.ErrMembershipNotFound):
-		status = 404
-		message = "active participant association not found"
 	case errors.Is(err, services.ErrDocumentInvalid):
 		status = 400
 		message = "invalid document fields"
 	case errors.Is(err, services.ErrExpedienteNotFound):
 		status = 404
 		message = "expediente not found"
-	case errors.Is(err, services.ErrSubstageNotFound):
-		status = 400
-		message = "document substage not found or inactive"
 	case errors.Is(err, services.ErrExpedienteInvalid):
 		status = 400
-		message = "limit must be 1 to 100 and offset nonnegative"
+		message = "invalid expediente fields, participant identifiers or pagination"
 	case errors.Is(err, services.ErrExpedienteDuplicate):
 		status = 409
 		message = "expediente number already exists"

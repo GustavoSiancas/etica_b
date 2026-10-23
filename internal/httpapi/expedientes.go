@@ -17,13 +17,21 @@ type ExpedienteAPI interface {
 }
 
 type DocumentAPI interface {
+	ListTypes(context.Context) ([]services.DocumentTypeEntry, error)
 	ListStages(context.Context) ([]services.DocumentStageCatalog, error)
 	Create(context.Context, int64, services.CreateDocumentInput) (services.DocumentResponse, error)
 	ListByExpediente(context.Context, int64) ([]services.DocumentResponse, error)
 }
 
-func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI, documents DocumentAPI, participants ParticipantAPI) {
-	registerParticipants(mux, participants)
+func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI, documents DocumentAPI) {
+	mux.HandleFunc("GET /document-types", func(w http.ResponseWriter, r *http.Request) {
+		result, err := documents.ListTypes(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, http.StatusOK, result)
+	})
 	mux.HandleFunc("GET /document-stages", func(w http.ResponseWriter, r *http.Request) {
 		result, err := documents.ListStages(r.Context())
 		if err != nil {

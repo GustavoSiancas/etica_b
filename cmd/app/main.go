@@ -23,7 +23,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	slog.Info("configuration loaded", "http_addr", cfg.HTTPAddr, "demo_reset_enabled", cfg.EnableDemoReset, "database_clear_enabled", cfg.EnableDatabaseClear)
+	slog.Info("configuration loaded", "http_addr", cfg.HTTPAddr, "demo_reset_enabled", cfg.EnableDemoReset, "database_clear_enabled", cfg.EnableDatabaseClear, "initial_participant_load_enabled", cfg.EnableInitialParticipantLoad)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	db, pool, err := postgres.Open(ctx, cfg.DatabaseURL)
@@ -43,7 +43,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Routes(service, services.NewExpedienteService(db), services.NewDocumentService(db), services.NewParticipantService(db), httpapi.RoutesOption{DatabaseClear: services.NewDatabaseClearService(db, cfg.EnableDatabaseClear), Escrito: services.NewEscritoService(db), DemoData: services.NewDemoDataService(db, "seeds/demo_data.sql", cfg.EnableDemoReset)}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Routes(service, services.NewExpedienteService(db), services.NewDocumentService(db), services.NewParticipantService(db), httpapi.RoutesOption{EnableInitialParticipantLoad: cfg.EnableInitialParticipantLoad, DatabaseClear: services.NewDatabaseClearService(db, cfg.EnableDatabaseClear), Escrito: services.NewEscritoService(db), DemoData: services.NewDemoDataService(db, "seeds/demo_data.sql", cfg.EnableDemoReset)}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stop, stopSignal := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stopSignal()
 	done := make(chan struct{})

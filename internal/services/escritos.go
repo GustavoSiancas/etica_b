@@ -107,7 +107,7 @@ func (s *EscritoService) Create(ctx context.Context, input CreateEscritoInput) (
 			if err := tx.Omit("Escrito", "Denunciante").Create(&link).Error; err != nil {
 				return err
 			}
-			complainantResponses = append(complainantResponses, ParticipantResponse{ID: person.ID, Name: person.Name})
+			complainantResponses = append(complainantResponses, denuncianteResponse(person))
 		}
 		defendantResponses := make([]ParticipantResponse, 0, len(respondents))
 		for _, person := range respondents {
@@ -115,7 +115,7 @@ func (s *EscritoService) Create(ctx context.Context, input CreateEscritoInput) (
 			if err := tx.Omit("Escrito", "Denunciado").Create(&link).Error; err != nil {
 				return err
 			}
-			defendantResponses = append(defendantResponses, ParticipantResponse{ID: person.ID, Name: person.Name})
+			defendantResponses = append(defendantResponses, denunciadoResponse(person))
 		}
 		result = escritoResponse(row, complainantResponses, defendantResponses)
 		return nil
@@ -146,11 +146,11 @@ func (s *EscritoService) List(ctx context.Context, status string, limit, offset 
 	for _, row := range rows {
 		complainants := make([]ParticipantResponse, 0, len(row.Denunciantes))
 		for _, link := range row.Denunciantes {
-			complainants = append(complainants, ParticipantResponse{ID: link.Denunciante.ID, Name: link.Denunciante.Name})
+			complainants = append(complainants, denuncianteResponse(link.Denunciante))
 		}
 		respondents := make([]ParticipantResponse, 0, len(row.Denunciados))
 		for _, link := range row.Denunciados {
-			respondents = append(respondents, ParticipantResponse{ID: link.Denunciado.ID, Name: link.Denunciado.Name})
+			respondents = append(respondents, denunciadoResponse(link.Denunciado))
 		}
 		page.Data = append(page.Data, escritoResponse(row, complainants, respondents))
 	}
@@ -184,11 +184,11 @@ func (s *EscritoService) UpdateStatus(ctx context.Context, id int64, status stri
 	}
 	complainants := make([]ParticipantResponse, 0, len(row.Denunciantes))
 	for _, link := range row.Denunciantes {
-		complainants = append(complainants, ParticipantResponse{ID: link.Denunciante.ID, Name: link.Denunciante.Name})
+		complainants = append(complainants, denuncianteResponse(link.Denunciante))
 	}
 	respondents := make([]ParticipantResponse, 0, len(row.Denunciados))
 	for _, link := range row.Denunciados {
-		respondents = append(respondents, ParticipantResponse{ID: link.Denunciado.ID, Name: link.Denunciado.Name})
+		respondents = append(respondents, denunciadoResponse(link.Denunciado))
 	}
 	return escritoResponse(row, complainants, respondents), nil
 }

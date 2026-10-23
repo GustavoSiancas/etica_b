@@ -49,7 +49,7 @@ func (s *DemoDataService) Reset(ctx context.Context) (DemoDataSummary, error) {
 		table, column string
 		count         *int64
 	}{
-		{"expedientes", "name", &summary.Expedientes},
+		{"expedientes", "description", &summary.Expedientes},
 		{"denunciantes", "name", &summary.Denunciantes},
 		{"denunciados", "name", &summary.Denunciados},
 		{"documents", "name", &summary.Documents},
