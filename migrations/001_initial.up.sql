@@ -54,7 +54,7 @@ CREATE TABLE expediente_year_counters (
     last_number BIGINT NOT NULL CHECK (last_number > 0)
 );
 
-CREATE FUNCTION next_expediente_code(p_year INTEGER) RETURNS VARCHAR(50)
+CREATE OR REPLACE FUNCTION next_expediente_code(p_year INTEGER) RETURNS VARCHAR(50)
 LANGUAGE plpgsql AS $$
 DECLARE next_number BIGINT;
 BEGIN
@@ -66,7 +66,7 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION assign_expediente_code() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION assign_expediente_code() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     NEW.code := next_expediente_code(EXTRACT(YEAR FROM statement_timestamp() AT TIME ZONE 'America/Lima')::INTEGER);
     NEW.number := NEW.code;

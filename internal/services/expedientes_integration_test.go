@@ -59,7 +59,7 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 		t.Fatal(platform.Diagnose(err))
 	}
 	defer testPool.Close()
-	// Reproduce an interrupted/older installation that left only the enum.
+	// Reproduce an older installation that left the enum and code functions.
 	if err = db.Exec(`CREATE TYPE expediente_init_type_enum AS ENUM (
 		'DENUNCIA_DE_OFICIO', 'DENUNCIA_DE_PARTE',
 		'COMUNICACIONES_DE_ENTIDADES_PUBLICAS',
@@ -67,6 +67,14 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 		'APROBADO_POR_ASAMBLEA_GENERAL'
 	)`).Error; err != nil {
 		t.Fatal("cannot create existing enum fixture")
+	}
+	if err = db.Exec(`
+		CREATE FUNCTION next_expediente_code(p_year INTEGER) RETURNS VARCHAR(50)
+		LANGUAGE plpgsql AS $$ BEGIN RETURN 'obsolete'; END; $$;
+		CREATE FUNCTION assign_expediente_code() RETURNS trigger
+		LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;
+	`).Error; err != nil {
+		t.Fatal("cannot create existing function fixtures")
 	}
 	migration, err := os.ReadFile("migrations/001_initial.up.sql")
 	if err != nil {
