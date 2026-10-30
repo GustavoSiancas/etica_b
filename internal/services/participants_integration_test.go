@@ -119,11 +119,11 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 		t.Fatal("partial expediente created")
 	}
 	documents := NewDocumentService(db)
-	var substage models.DocumentSubstage
-	if err := db.First(&substage).Error; err != nil {
+	section, err := documents.CreateSection(ctx, 1, CreateSectionInput{Name: "Denuncia", Type: "OTROS"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.Create(ctx, 1, CreateDocumentInput{Title: "Document", Stage: substage.Name, Type: "OTROS"}); err != nil {
+	if _, err := documents.CreateInSection(ctx, 1, section.ID, CreateDocumentInput{Name: "Document"}); err != nil {
 		t.Fatal(err)
 	}
 	person, err := participants.CreateDenunciante(ctx, CreateDenuncianteInput{Name: "Second participant", DocumentType: "DNI", DocumentNumber: "00123456"})
@@ -147,7 +147,7 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 	if err != nil || len(memberships) != 2 || memberships[1].Participant.RegistrationNumber == nil || *memberships[1].Participant.RegistrationNumber != 12345 {
 		t.Fatalf("membership identity lost: %+v %v", memberships, err)
 	}
-	listed, _, err := participants.ListDenunciantes(ctx, 100, 0)
+	listed, _, err := participants.ListDenunciantes(ctx, 100, 0, ParticipantFilters{})
 	if err != nil || len(listed) != 2 || listed[1].DocumentNumber == nil || *listed[1].DocumentNumber != "00123456" {
 		t.Fatalf("complainant identity lost: %+v %v", listed, err)
 	}
@@ -155,33 +155,235 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("documents: %v %v", rows, err)
 	}
-	stageCatalog, err := documents.ListStages(ctx)
-	if err != nil || len(stageCatalog) == 0 {
-		t.Fatalf("stage dictionary: %v", err)
+	types, err := documents.ListTypes(ctx)
+	if err != nil || len(types) != 3 {
+		t.Fatalf("types: %v %v", types, err)
 	}
-	typeCatalog, err := documents.ListTypes(ctx)
-	if err != nil || len(typeCatalog) != 3 || typeCatalog[0].Code != "ESCRITO_DE_OFICIO" || typeCatalog[2].Code != "OTROS" {
-		t.Fatalf("type dictionary: %v %v", typeCatalog, err)
-	}
-	for _, stage := range []string{stageCatalog[0].Name, "OTROS", "Etapa personalizada"} {
-		created, err := documents.Create(ctx, 1, CreateDocumentInput{Title: "Free classification", Stage: stage, Type: "Tipo personalizado"})
-		if err != nil || created.Stage != stage || created.Type != "Tipo personalizado" {
-			t.Fatalf("free classification: %+v %v", created, err)
-		}
-	}
-	if err := db.Exec(`DELETE FROM document_substages; DELETE FROM document_stages; DELETE FROM document_types`).Error; err != nil {
+	if err := db.Exec("DELETE FROM document_types").Error; err != nil {
 		t.Fatal(err)
 	}
 	independent, err := documents.ListByExpediente(ctx, 1)
-	if err != nil || len(independent) != 4 {
-		t.Fatalf("documents must not depend on dictionary: %+v %v", independent, err)
+	if err != nil || len(independent) != 1 {
+		t.Fatalf("dictionary independence: %v %v", independent, err)
 	}
 	a, err = participants.ListDenunciantesByExpediente(ctx, 1)
 	if err != nil || len(a) != 2 {
 		t.Fatalf("all expediente participants must remain visible: %v %v", a, err)
 	}
+	var beforeSeed, afterSeed int64
+	if err := db.Model(&models.Denunciado{}).Count(&beforeSeed).Error; err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
-		apply("seeds/demo_data.sql")
+		// Startup import is unconditional; the dev reload flag is independent.
+		summary, err := NewDemoDataService(db, "seeds/demo_data.sql", false).Load(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			afterSeed = summary.Denunciados
+		}
+		if summary.Denunciados <= beforeSeed || summary.Denunciados != afterSeed {
+			t.Fatalf("non-idempotent seed: %+v", summary)
+		}
+		var count int64
+		if err := db.Model(&models.Expediente{}).Count(&count).Error; err != nil || count != after.Total {
+			t.Fatalf("seed changed expedientes: %d %v", count, err)
+		}
+		if err := db.Model(&models.Document{}).Count(&count).Error; err != nil || count != 1 {
+			t.Fatalf("seed changed documents: %d %v", count, err)
+		}
+		var preserved models.Denunciado
+		if err := db.First(&preserved, respondent.ID).Error; err != nil || preserved.Name != respondent.Name {
+			t.Fatal("seed modified existing participant")
+		}
+	}
+	if _, err := NewDemoDataService(db, "seeds/demo_data.sql", false).Reset(ctx); !errors.Is(err, ErrDemoResetDisabled) {
+		t.Fatal("development reload flag ignored")
+	}
+	// Concurrent restarts serialize safely and only insert missing CALs.
+	loadResults := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() { _, err := NewDemoDataService(db, "seeds/demo_data.sql", false).Load(ctx); loadResults <- err }()
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-loadResults; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var finalParticipants int64
+	if err := db.Model(&models.Denunciado{}).Count(&finalParticipants).Error; err != nil || finalParticipants != afterSeed {
+		t.Fatal("concurrent import duplicated participants")
+	}
+	// Upgrade a previously loaded name-only demo record in place.
+	if err := db.Exec("INSERT INTO denunciantes(name,is_demo) VALUES ('Interbank',TRUE)").Error; err != nil {
+		t.Fatal(err)
+	}
+	// The extra seed inserts missing demo participants without duplicating them.
+	for i := 0; i < 2; i++ {
+		summary, err := NewDemoDataService(db, "seeds/demo_data_denuncianes.sql", false).Load(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.Denunciantes != 52 || summary.Denunciados != afterSeed {
+			t.Fatalf("complainant seed: %+v", summary)
+		}
+	}
+	var demoCount int64
+	if err := db.Model(&models.Denunciante{}).Where("is_demo = TRUE AND document_type IS NOT NULL AND document_number IS NOT NULL").Count(&demoCount).Error; err != nil || demoCount != 50 {
+		t.Fatalf("demo complainants with fictional documents: %d %v", demoCount, err)
+	}
+	for kind, want := range map[string]int64{"RUC": 25, "DNI": 20, "CE": 5} {
+		var got int64
+		if err := db.Model(&models.Denunciante{}).Where("is_demo=TRUE AND document_type=?", kind).Count(&got).Error; err != nil || got != want {
+			t.Fatalf("demo type %s: %d %v", kind, got, err)
+		}
+	}
+	// Existing populated documents must not be overwritten by later reloads.
+	if err := db.Exec("UPDATE denunciantes SET document_number='20123456789' WHERE name='Interbank' AND is_demo=TRUE").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewDemoDataService(db, "seeds/demo_data_denuncianes.sql", false).Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var preservedNumber string
+	if err := db.Table("denunciantes").Select("document_number").Where("name='Interbank' AND is_demo=TRUE").Scan(&preservedNumber).Error; err != nil || preservedNumber != "20123456789" {
+		t.Fatal("seed overwrote an existing document")
+	}
+	// The same name matches with accents, N/n, case changes and decomposed text.
+	for _, name := range []string{"__Busqueda__ Jos\u00e9 Mu\u00f1oz \u00c1lvarez", "__Busqueda__ Jose\u0301 Mun\u0303oz A\u0301lvarez", "__Busqueda__ Jose Munoz Alvarez"} {
+		if err := db.Exec("INSERT INTO denunciantes(name,document_type,document_number) VALUES (?,'DNI','76543210');", name).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("INSERT INTO denunciados(name,document_type,document_number,registration_number) VALUES (?,'DNI','76543210',99900001);", name).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, term := range []string{"__busqueda__ jose munoz alvarez", "__BUSQUEDA__ JOS\u00c9 MU\u00d1OZ \u00c1LVAREZ", "__Busqueda__ Jose\u0301 Mun\u0303oz A\u0301lvarez"} {
+		for _, filter := range []ParticipantFilters{{Name: term}, {Q: term}} {
+			for _, kind := range []string{"denunciante", "denunciado"} {
+				var rows []ParticipantResponse
+				var total int64
+				var err error
+				if kind == "denunciante" {
+					rows, total, err = participants.ListDenunciantes(ctx, 1, 1, filter)
+				} else {
+					rows, total, err = participants.ListDenunciados(ctx, 1, 1, filter)
+				}
+				if err != nil || total != 3 || len(rows) != 1 {
+					t.Fatalf("normalized %s search: total=%d rows=%d error=%v", kind, total, len(rows), err)
+				}
+				if !strings.Contains(rows[0].Name, "__Busqueda__") {
+					t.Fatal("stored name unexpectedly changed")
+				}
+			}
+		}
+	}
+	// Participant-scoped lists combine membership, state/location and paging.
+	scopedComplainant, err := participants.CreateDenunciante(ctx, CreateDenuncianteInput{Name: "Scoped complainant", DocumentType: "DNI", DocumentNumber: "88000001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedRespondent, err := participants.CreateDenunciado(ctx, CreateDenunciadoInput{Name: "Scoped respondent", DocumentType: "DNI", DocumentNumber: "88000002", RegistrationNumber: 99990001})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := NewExpedienteService(db)
+	var scopedIDs []int64
+	for i := 0; i < 2; i++ {
+		caseDate := &Date{Time: opening.AddDate(0, 0, i-1)}
+		row, err := cases.Create(ctx, CreateExpedienteInput{OpeningDate: caseDate, InitType: "DENUNCIA_DE_PARTE", DenuncianteIDs: []int64{scopedComplainant.ID}, DenunciadoIDs: []int64{scopedRespondent.ID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		scopedIDs = append(scopedIDs, row.ID)
+	}
+	if _, err := cases.UpdateLocation(ctx, scopedIDs[1], UpdateExpedienteLocationInput{Location: UbicacionConsejo}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cases.UpdateStatus(ctx, scopedIDs[1], UpdateExpedienteStatusInput{Status: ExpedienteCerrado}); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []string{"denunciante", "denunciado"} {
+		id := scopedComplainant.ID
+		list := cases.ListByDenunciante
+		if role == "denunciado" {
+			id = scopedRespondent.ID
+			list = cases.ListByDenunciado
+		}
+		for offset := 0; offset < 3; offset++ {
+			page, err := list(ctx, id, 1, offset, ExpedienteFilters{})
+			want := 1
+			if offset == 2 {
+				want = 0
+			}
+			if err != nil || page.Total != 2 || len(page.Data) != want {
+				t.Fatalf("scoped %s offset %d: %+v %v", role, offset, page, err)
+			}
+			if offset < 2 && page.Data[0].ID != scopedIDs[1-offset] {
+				t.Fatal("scoped order or membership incorrect")
+			}
+		}
+		page, err := list(ctx, id, 20, 0, ExpedienteFilters{Status: ExpedienteCerrado, Location: UbicacionConsejo})
+		if err != nil || page.Total != 1 || len(page.Data) != 1 || page.Data[0].ID != scopedIDs[1] {
+			t.Fatalf("combined scoped filters: %+v %v", page, err)
+		}
+		page, err = list(ctx, id, 20, 0, ExpedienteFilters{Status: ExpedienteAbierto, Location: UbicacionConsejo})
+		if err != nil || page.Total != 0 || len(page.Data) != 0 || page.Data == nil {
+			t.Fatal("empty scoped list must be [] with total 0")
+		}
+		if _, err := list(ctx, 9223372036854775807, 20, 0, ExpedienteFilters{}); !errors.Is(err, ErrParticipantNotFound) {
+			t.Fatalf("missing participant: %v", err)
+		}
+	}
+	// All three lists filter opening_date inclusively before counting/paging.
+	for _, test := range []struct {
+		filter ExpedienteFilters
+		want   int64
+	}{
+		{ExpedienteFilters{From: "2026-10-21", To: "2026-10-22"}, 2},
+		{ExpedienteFilters{From: "2026-10-21", To: "2026-10-21"}, 1},
+		{ExpedienteFilters{From: "2026-10-22"}, 1},
+		{ExpedienteFilters{To: "2026-10-21"}, 1},
+		{ExpedienteFilters{From: "2026-10-23"}, 0},
+		{ExpedienteFilters{From: "2026-10-22", To: "2026-10-22", Status: ExpedienteCerrado, Location: UbicacionConsejo}, 1},
+	} {
+		for _, role := range []string{"denunciante", "denunciado"} {
+			id := scopedComplainant.ID
+			list := cases.ListByDenunciante
+			if role == "denunciado" {
+				id = scopedRespondent.ID
+				list = cases.ListByDenunciado
+			}
+			page, err := list(ctx, id, 1, 0, test.filter)
+			wantRows := int(test.want)
+			if wantRows > 1 {
+				wantRows = 1
+			}
+			if err != nil || page.Total != test.want || len(page.Data) != wantRows {
+				t.Fatalf("date range %s %+v: %+v %v", role, test.filter, page, err)
+			}
+			page, err = list(ctx, id, 1, 2, test.filter)
+			if err != nil || page.Total != test.want || len(page.Data) != 0 {
+				t.Fatal("date total changed with offset")
+			}
+		}
+	}
+	// Older records with a NULL opening date are excluded by any date bound.
+	if err := db.Exec("INSERT INTO expedientes(description,opening_date) VALUES ('No opening date','2026-01-01'); UPDATE expedientes SET opening_date=NULL WHERE description='No opening date'").Error; err != nil {
+		t.Fatal(err)
+	}
+	generalPage, err := cases.List(ctx, 20, 0, ExpedienteFilters{From: "2026-10-21", To: "2026-10-21"})
+	if err != nil || generalPage.Total != 1 || len(generalPage.Data) != 1 || generalPage.Data[0].ID != scopedIDs[0] {
+		t.Fatalf("general opening range: %+v %v", generalPage, err)
+	}
+	emptyPerson, err := participants.CreateDenunciante(ctx, CreateDenuncianteInput{Name: "No cases", DocumentType: "DNI", DocumentNumber: "88000003"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyPage, err := cases.ListByDenunciante(ctx, emptyPerson.ID, 20, 0, ExpedienteFilters{})
+	if err != nil || emptyPage.Total != 0 || emptyPage.Data == nil {
+		t.Fatal("existing participant with no cases must return an empty page")
 	}
 	if err := NewDatabaseClearService(db, true).Clear(ctx); err != nil {
 		t.Fatal(err)

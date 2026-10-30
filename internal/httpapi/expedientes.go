@@ -9,31 +9,38 @@ import (
 )
 
 type ExpedienteAPI interface {
+	ListByDenunciante(context.Context, int64, int, int, services.ExpedienteFilters) (services.ExpedienteList, error)
+	ListByDenunciado(context.Context, int64, int, int, services.ExpedienteFilters) (services.ExpedienteList, error)
 	Create(context.Context, services.CreateExpedienteInput) (services.ExpedienteResponse, error)
-	List(context.Context, int, int) (services.ExpedienteList, error)
+	List(context.Context, int, int, ...services.ExpedienteFilters) (services.ExpedienteList, error)
 	ListInitTypes(context.Context) ([]services.ExpedienteInitTypeResponse, error)
+	ListLocations(context.Context) ([]services.ExpedienteLocationResponse, error)
+	UpdateLocation(context.Context, int64, services.UpdateExpedienteLocationInput) (services.ExpedienteResponse, error)
 	ListStatuses(context.Context) ([]services.ExpedienteStatusResponse, error)
 	UpdateStatus(context.Context, int64, services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error)
 }
 
-type DocumentAPI interface {
-	ListTypes(context.Context) ([]services.DocumentTypeEntry, error)
-	ListStages(context.Context) ([]services.DocumentStageCatalog, error)
-	Create(context.Context, int64, services.CreateDocumentInput) (services.DocumentResponse, error)
-	ListByExpediente(context.Context, int64) ([]services.DocumentResponse, error)
-}
-
-func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI, documents DocumentAPI) {
-	mux.HandleFunc("GET /document-types", func(w http.ResponseWriter, r *http.Request) {
-		result, err := documents.ListTypes(r.Context())
+func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI) {
+	registerParticipantExpedientes(mux, service)
+	mux.HandleFunc("GET /expediente-locations", func(w http.ResponseWriter, r *http.Request) {
+		result, err := service.ListLocations(r.Context())
 		if err != nil {
 			failure(w, err)
 			return
 		}
 		respond(w, http.StatusOK, result)
 	})
-	mux.HandleFunc("GET /document-stages", func(w http.ResponseWriter, r *http.Request) {
-		result, err := documents.ListStages(r.Context())
+	mux.HandleFunc("PATCH /expedientes/{id}/location", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		var input services.UpdateExpedienteLocationInput
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := service.UpdateLocation(r.Context(), id, input)
 		if err != nil {
 			failure(w, err)
 			return
@@ -59,36 +66,6 @@ func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI, documents Do
 	})
 	mux.HandleFunc("GET /expediente-statuses", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.ListStatuses(r.Context())
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
-	mux.HandleFunc("POST /expedientes/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
-			failure(w, services.ErrDocumentInvalid)
-			return
-		}
-		var input services.CreateDocumentInput
-		if !decode(w, r, &input) {
-			return
-		}
-		result, err := documents.Create(r.Context(), id, input)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusCreated, result)
-	})
-	mux.HandleFunc("GET /expedientes/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
-			failure(w, services.ErrDocumentInvalid)
-			return
-		}
-		result, err := documents.ListByExpediente(r.Context(), id)
 		if err != nil {
 			failure(w, err)
 			return
@@ -144,11 +121,66 @@ func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI, documents Do
 			failure(w, services.ErrExpedienteInvalid)
 			return
 		}
-		result, err := service.List(r.Context(), limit, offset)
+		filter, err := expedienteFilters(r)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		result, err := service.List(r.Context(), limit, offset, filter)
 		if err != nil {
 			failure(w, err)
 			return
 		}
 		respond(w, http.StatusOK, result)
 	})
+}
+
+func expedienteFilters(r *http.Request) (services.ExpedienteFilters, error) {
+	filter := services.ExpedienteFilters{}
+	for key, target := range map[string]*string{"status": &filter.Status, "location": &filter.Location, "from": &filter.From, "to": &filter.To} {
+		if values, ok := r.URL.Query()[key]; ok {
+			if len(values) != 1 {
+				return filter, services.ErrExpedienteInvalid
+			}
+			*target = values[0]
+		}
+	}
+	if !services.ValidExpedienteFilters(filter) {
+		return filter, services.ErrExpedienteInvalid
+	}
+	return filter, nil
+}
+func registerParticipantExpedientes(mux *http.ServeMux, service ExpedienteAPI) {
+	// Resolve methods inside the handler so optional nil services used by other
+	// isolated HTTP route tests are never dereferenced during registration.
+	for _, role := range []string{"denunciantes", "denunciados"} {
+		mux.HandleFunc("GET /"+role+"/{id}/expedientes", func(w http.ResponseWriter, r *http.Request) {
+			id, err := parsePositiveID(r.PathValue("id"))
+			if err != nil {
+				failure(w, services.ErrParticipantInvalid)
+				return
+			}
+			limit, offset, ok := participantPage(r)
+			if !ok {
+				failure(w, services.ErrExpedienteInvalid)
+				return
+			}
+			filter, err := expedienteFilters(r)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			var result services.ExpedienteList
+			if role == "denunciantes" {
+				result, err = service.ListByDenunciante(r.Context(), id, limit, offset, filter)
+			} else {
+				result, err = service.ListByDenunciado(r.Context(), id, limit, offset, filter)
+			}
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			respond(w, http.StatusOK, result)
+		})
+	}
 }

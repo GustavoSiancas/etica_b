@@ -6,65 +6,65 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"etica_back/internal/persistence/models"
 	"gorm.io/gorm"
 )
 
-var ErrDemoResetDisabled = errors.New("demo data reset is disabled")
+var ErrDemoResetDisabled = errors.New("participant seed reload is disabled")
 
 type DemoDataSummary struct {
-	Expedientes  int64 `json:"expedientes"`
-	Denunciantes int64 `json:"denunciantes"`
 	Denunciados  int64 `json:"denunciados"`
-	Documents    int64 `json:"documents"`
-	Escritos     int64 `json:"escritos"`
+	Denunciantes int64 `json:"denunciantes"`
 }
-
 type DemoDataService struct {
 	db      *gorm.DB
-	path    string
+	paths   []string
 	enabled bool
 }
 
-func NewDemoDataService(db *gorm.DB, path string, enabled bool) *DemoDataService {
-	return &DemoDataService{db: db, path: path, enabled: enabled}
+func NewDemoDataService(db *gorm.DB, path string, enabled bool, additionalPaths ...string) *DemoDataService {
+	return &DemoDataService{db: db, paths: append([]string{path}, additionalPaths...), enabled: enabled}
 }
-
 func (s *DemoDataService) Enabled() bool { return s != nil && s.enabled }
 
-// Reset reloads fixture rows, including internally marked participants.
+// Load runs the insert-only participant seed on every startup. It never resets data.
+// The SQL locks the destination table and skips existing CALs, making restarts safe.
+func (s *DemoDataService) Load(ctx context.Context) (DemoDataSummary, error) {
+	for _, path := range s.paths {
+		data, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return DemoDataSummary{}, fmt.Errorf("read participant seed: %w", err)
+		}
+		if strings.TrimSpace(string(data)) == "" {
+			return DemoDataSummary{}, errors.New("participant seed is empty")
+		}
+		if err := s.db.WithContext(ctx).Connection(func(conn *gorm.DB) error {
+			if err := conn.Exec(string(data)).Error; err != nil {
+				// A script containing BEGIN can fail before COMMIT. Do not return an
+				// aborted transaction to the pool when a manually edited seed fails.
+				conn.Exec("ROLLBACK")
+				return err
+			}
+			return nil
+		}); err != nil {
+			return DemoDataSummary{}, err
+		}
+	}
+	var summary DemoDataSummary
+	err := s.db.WithContext(ctx).Model(&models.Denunciado{}).Count(&summary.Denunciados).Error
+	if err == nil {
+		err = s.db.WithContext(ctx).Model(&models.Denunciante{}).Count(&summary.Denunciantes).Error
+	}
+	return summary, err
+}
+
+// Reset retains the development route for compatibility, but now only inserts
+// missing participants; it never deletes or updates existing information.
 func (s *DemoDataService) Reset(ctx context.Context) (DemoDataSummary, error) {
 	if !s.Enabled() {
 		return DemoDataSummary{}, ErrDemoResetDisabled
 	}
-	sql, err := os.ReadFile(filepath.Clean(s.path))
-	if err != nil {
-		return DemoDataSummary{}, fmt.Errorf("read demo data seed: %w", err)
-	}
-	if err := s.db.WithContext(ctx).Exec(string(sql)).Error; err != nil {
-		return DemoDataSummary{}, err
-	}
-	var summary DemoDataSummary
-	queries := []struct {
-		table, column string
-		count         *int64
-	}{
-		{"expedientes", "description", &summary.Expedientes},
-		{"denunciantes", "name", &summary.Denunciantes},
-		{"denunciados", "name", &summary.Denunciados},
-		{"documents", "name", &summary.Documents},
-		{"escritos", "title", &summary.Escritos},
-	}
-	for _, query := range queries {
-		rows := s.db.WithContext(ctx).Table(query.table)
-		if query.table == "denunciantes" || query.table == "denunciados" {
-			rows = rows.Where("is_demo = ?", true)
-		} else {
-			rows = rows.Where(query.column+" LIKE ?", "[DEMO]%")
-		}
-		if err := rows.Count(query.count).Error; err != nil {
-			return DemoDataSummary{}, err
-		}
-	}
-	return summary, nil
+	return s.Load(ctx)
 }

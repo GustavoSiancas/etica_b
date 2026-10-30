@@ -12,30 +12,34 @@ import (
 )
 
 type fakeExpedientes struct {
-	createErr     error
-	limit, offset int
-	statusInput   services.UpdateExpedienteStatusInput
-	statusID      int64
-	statusErr     error
+	participantID   int64
+	participantRole string
+	participantErr  error
+	filters         services.ExpedienteFilters
+	locationInput   services.UpdateExpedienteLocationInput
+	locationID      int64
+	createErr       error
+	limit, offset   int
+	statusInput     services.UpdateExpedienteStatusInput
+	statusID        int64
+	statusErr       error
 }
 type fakeDocuments struct {
+	DocumentAPI
 	input        services.CreateDocumentInput
 	create       services.DocumentResponse
 	list         []services.DocumentResponse
-	stages       []services.DocumentStageCatalog
 	err          error
 	expedienteID int64
 }
 
-func (f *fakeDocuments) ListStages(context.Context) ([]services.DocumentStageCatalog, error) {
-	return f.stages, f.err
-}
-
 type fakeParticipants struct {
-	list         []services.ParticipantMembershipResponse
-	listErr      error
-	expedienteID int64
-	kind         string
+	filters       services.ParticipantFilters
+	limit, offset int
+	list          []services.ParticipantMembershipResponse
+	listErr       error
+	expedienteID  int64
+	kind          string
 }
 
 func (f *fakeParticipants) ListDenunciantesByExpediente(_ context.Context, id int64) ([]services.ParticipantMembershipResponse, error) {
@@ -59,10 +63,12 @@ func (*fakeParticipants) CreateDenunciante(_ context.Context, input services.Cre
 func (*fakeParticipants) CreateDenunciado(_ context.Context, input services.CreateDenunciadoInput) (services.ParticipantResponse, error) {
 	return services.ParticipantResponse{ID: 2, Name: input.Name}, nil
 }
-func (*fakeParticipants) ListDenunciantes(context.Context, int, int) ([]services.ParticipantResponse, int64, error) {
+func (f *fakeParticipants) ListDenunciantes(_ context.Context, limit, offset int, filters services.ParticipantFilters) ([]services.ParticipantResponse, int64, error) {
+	f.filters, f.limit, f.offset = filters, limit, offset
 	return []services.ParticipantResponse{}, 0, nil
 }
-func (*fakeParticipants) ListDenunciados(context.Context, int, int) ([]services.ParticipantResponse, int64, error) {
+func (f *fakeParticipants) ListDenunciados(_ context.Context, limit, offset int, filters services.ParticipantFilters) ([]services.ParticipantResponse, int64, error) {
+	f.filters, f.limit, f.offset = filters, limit, offset
 	return []services.ParticipantResponse{}, 0, nil
 }
 func (*fakeParticipants) AttachDenunciante(_ context.Context, expedienteID, participantID int64) (services.ParticipantMembershipResponse, error) {
@@ -72,9 +78,8 @@ func (*fakeParticipants) AttachDenunciado(_ context.Context, expedienteID, parti
 	return services.ParticipantMembershipResponse{ID: 6, ExpedienteID: expedienteID, Participant: services.ParticipantResponse{ID: participantID, Name: "Luis"}}, nil
 }
 
-func (f *fakeDocuments) Create(_ context.Context, id int64, input services.CreateDocumentInput) (services.DocumentResponse, error) {
+func (f *fakeDocuments) Create(_ context.Context, input services.CreateDocumentInput) (services.DocumentResponse, error) {
 	f.input = input
-	f.expedienteID = id
 	if f.err != nil {
 		return services.DocumentResponse{}, f.err
 	}
@@ -87,17 +92,27 @@ func (f *fakeDocuments) ListByExpediente(_ context.Context, id int64) ([]service
 
 func (f *fakeExpedientes) Create(_ context.Context, input services.CreateExpedienteInput) (services.ExpedienteResponse, error) {
 	initType := input.InitType
-	return services.ExpedienteResponse{ID: 1, Number: "1-2026", Code: "1-2026", InitType: &initType, Status: "OPEN"}, f.createErr
+	return services.ExpedienteResponse{ID: 1, Number: "1-2026", InitType: &initType, Status: "ABIERTO", Location: services.UbicacionDireccion}, f.createErr
 }
 func (f *fakeExpedientes) ListInitTypes(context.Context) ([]services.ExpedienteInitTypeResponse, error) {
 	return []services.ExpedienteInitTypeResponse{{Value: "DENUNCIA_DE_OFICIO", Label: "DENUNCIA DE OFICIO"}}, nil
 }
-func (f *fakeExpedientes) ListStatuses(context.Context) ([]services.ExpedienteStatusResponse, error) {
-	return []services.ExpedienteStatusResponse{{Value: "OPEN", Label: "Abierto"}, {Value: "IN_PROGRESS", Label: "En proceso"}, {Value: "CLOSED", Label: "Cerrado"}}, nil
+func (f *fakeExpedientes) ListLocations(ctx context.Context) ([]services.ExpedienteLocationResponse, error) {
+	return services.NewExpedienteService(nil).ListLocations(ctx)
 }
-func (f *fakeExpedientes) List(_ context.Context, limit, offset int) (services.ExpedienteList, error) {
+func (f *fakeExpedientes) UpdateLocation(_ context.Context, id int64, input services.UpdateExpedienteLocationInput) (services.ExpedienteResponse, error) {
+	f.locationID, f.locationInput = id, input
+	return services.ExpedienteResponse{ID: id, Location: input.Location}, f.statusErr
+}
+func (f *fakeExpedientes) ListStatuses(context.Context) ([]services.ExpedienteStatusResponse, error) {
+	return []services.ExpedienteStatusResponse{{Value: "ABIERTO", Label: "Abierto"}, {Value: "CERRADO", Label: "Cerrado"}}, nil
+}
+func (f *fakeExpedientes) List(_ context.Context, limit, offset int, filters ...services.ExpedienteFilters) (services.ExpedienteList, error) {
 	f.limit = limit
 	f.offset = offset
+	if len(filters) > 0 {
+		f.filters = filters[0]
+	}
 	return services.ExpedienteList{Data: []services.ExpedienteResponse{}, Limit: limit, Offset: offset}, nil
 }
 func (f *fakeExpedientes) UpdateStatus(_ context.Context, id int64, input services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error) {
@@ -115,7 +130,7 @@ func TestCreateExpedienteHTTP(t *testing.T) {
 		{`{"description":"Caso de prueba","init_type":"DENUNCIA_DE_OFICIO"}`, services.ErrExpedienteDuplicate, 409},
 		{`{"number":""}`, nil, 400},
 		{`{"description":"Caso","init_type":"UNKNOWN"}`, services.ErrExpedienteInvalid, 400},
-		{`{"number":"EXP-1","status":"CLOSED"}`, nil, 400},
+		{`{"number":"EXP-1","status":"CERRADO"}`, nil, 400},
 		{`{"description":"Caso","init_type":"DENUNCIA_DE_OFICIO"}`, errors.New("private database information"), 500},
 	} {
 		handler := Routes(nil, &fakeExpedientes{createErr: test.err}, &fakeDocuments{}, &fakeParticipants{})
@@ -129,7 +144,7 @@ func TestCreateExpedienteHTTP(t *testing.T) {
 		}
 		if test.status == 201 {
 			var data services.ExpedienteResponse
-			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil || data.Status != "OPEN" || data.ID != 1 || data.InitType == nil || *data.InitType != "DENUNCIA_DE_OFICIO" {
+			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil || data.Status != "ABIERTO" || data.ID != 1 || data.InitType == nil || *data.InitType != "DENUNCIA_DE_OFICIO" {
 				t.Fatal("incorrect create response")
 			}
 		}
@@ -165,17 +180,17 @@ func TestUpdateExpedienteStatusHTTP(t *testing.T) {
 	fake := &fakeExpedientes{}
 	handler := Routes(nil, fake, &fakeDocuments{}, &fakeParticipants{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/status", strings.NewReader(`{"status":"EN INVESTIGACION"}`)))
-	if response.Code != 200 || fake.statusID != 42 || fake.statusInput.Status != "EN INVESTIGACION" || !strings.Contains(response.Body.String(), `"status":"EN INVESTIGACION"`) {
+	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/status", strings.NewReader(`{"status":"CERRADO"}`)))
+	if response.Code != 200 || fake.statusID != 42 || fake.statusInput.Status != "CERRADO" || !strings.Contains(response.Body.String(), `"status":"CERRADO"`) {
 		t.Fatal("expediente status update endpoint failed")
 	}
 	for _, test := range []struct {
 		path, body string
 		status     int
 	}{
-		{"/expedientes/x/status", `{"status":"OPEN"}`, 400},
-		{"/expedientes/0/status", `{"status":"OPEN"}`, 400},
-		{"/expedientes/42/status", `{"status":"OPEN","extra":true}`, 400},
+		{"/expedientes/x/status", `{"status":"ABIERTO"}`, 400},
+		{"/expedientes/0/status", `{"status":"ABIERTO"}`, 400},
+		{"/expedientes/42/status", `{"status":"ABIERTO","extra":true}`, 400},
 	} {
 		response = httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("PATCH", test.path, strings.NewReader(test.body)))
@@ -185,7 +200,7 @@ func TestUpdateExpedienteStatusHTTP(t *testing.T) {
 	}
 	fake.statusErr = services.ErrExpedienteNotFound
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/999/status", strings.NewReader(`{"status":"CLOSED"}`)))
+	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/999/status", strings.NewReader(`{"status":"CERRADO"}`)))
 	if response.Code != 404 {
 		t.Fatal("missing expediente status update should return 404")
 	}
@@ -204,45 +219,8 @@ func TestListExpedienteStatuses(t *testing.T) {
 	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/expediente-statuses", nil))
-	if response.Code != 200 || !strings.Contains(response.Body.String(), `"value":"OPEN"`) || !strings.Contains(response.Body.String(), `"value":"IN_PROGRESS"`) || !strings.Contains(response.Body.String(), `"value":"CLOSED"`) {
+	if response.Code != 200 || !strings.Contains(response.Body.String(), `"value":"ABIERTO"`) || !strings.Contains(response.Body.String(), `"value":"CERRADO"`) {
 		t.Fatal("expediente status catalog endpoint failed")
-	}
-}
-
-func TestDocumentEndpoints(t *testing.T) {
-	input := services.DocumentResponse{ID: 7, ExpedienteID: 42, Title: "Resolución", Status: "DRAFT"}
-	fake := &fakeDocuments{create: input, list: []services.DocumentResponse{input}}
-	handler := Routes(nil, &fakeExpedientes{}, fake, &fakeParticipants{})
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("POST", "/expedientes/42/documents", strings.NewReader(`{"title":"Resolución","stage":"OTROS","type":"OTROS"}`)))
-	if response.Code != 201 || fake.expedienteID != 42 || fake.input.Stage != "OTROS" || fake.input.Type != "OTROS" {
-		t.Fatal("document creation endpoint failed")
-	}
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/expedientes/42/documents", nil))
-	if response.Code != 200 || !strings.Contains(response.Body.String(), "Resolución") || fake.expedienteID != 42 {
-		t.Fatal("document list endpoint failed")
-	}
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("POST", "/expedientes/no/documents", strings.NewReader(`{}`)))
-	if response.Code != 400 {
-		t.Fatal("invalid expediente path accepted")
-	}
-	fake.err = services.ErrExpedienteNotFound
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/expedientes/999/documents", nil))
-	if response.Code != 404 {
-		t.Fatal("missing expediente response should be 404")
-	}
-}
-
-func TestListDocumentStagesHTTP(t *testing.T) {
-	fake := &fakeDocuments{stages: []services.DocumentStageCatalog{{ID: 1, Code: "CALIFICACION_DENUNCIA", Name: "Calificación de la denuncia.", SortOrder: 1, Substages: []services.DocumentSubstageEntry{{ID: 3, Code: "CALIFICACION", Name: "Calificación de la denuncia.", SortOrder: 1}}}}}
-	handler := Routes(nil, &fakeExpedientes{}, fake, &fakeParticipants{})
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/document-stages", nil))
-	if response.Code != 200 || !strings.Contains(response.Body.String(), `"code":"CALIFICACION_DENUNCIA"`) || !strings.Contains(response.Body.String(), `"code":"CALIFICACION"`) {
-		t.Fatal("document stage catalog endpoint failed")
 	}
 }
 
@@ -355,6 +333,98 @@ func TestInitialParticipantLoadRoutes(t *testing.T) {
 			}
 			if w.Code != want {
 				t.Fatalf("%s enabled=%v: got %d want %d", kind, enabled, w.Code, want)
+			}
+		}
+	}
+}
+
+func TestParticipantFilterRouting(t *testing.T) {
+	fake := &fakeParticipants{}
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, fake)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/denunciados?limit=5&offset=10&q=Garcia&name=Luis&document_type=CE&document_number=00123456&registration_number=123", nil))
+	if w.Code != 200 || fake.limit != 5 || fake.offset != 10 || fake.filters.Q != "Garcia" || fake.filters.Name != "Luis" || fake.filters.DocumentType != "CE" || fake.filters.DocumentNumber != "00123456" || fake.filters.RegistrationNumber == nil || *fake.filters.RegistrationNumber != 123 {
+		t.Fatal("incorrect participant filters")
+	}
+	for _, query := range []string{"registration_number=0", "registration_number=abc", "name=Ana&name=Luis"} {
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/denunciados?"+query, nil))
+		if w.Code != 400 {
+			t.Fatalf("invalid filter accepted: %s", query)
+		}
+	}
+}
+
+func TestExpedienteFiltersHTTP(t *testing.T) {
+	fake := &fakeExpedientes{}
+	handler := Routes(nil, fake, nil, nil)
+	for _, test := range []struct {
+		query string
+		code  int
+	}{
+		{"?status=ABIERTO&location=CONSEJO%20DE%20ETICA&limit=5&offset=10", 200},
+		{"?status=OPEN", 400}, {"?location=OTHER", 400}, {"?status=ABIERTO&status=CERRADO", 400}, {"?location=DIRECCION%20DE%20ETICA&location=TRIBUNAL%20DE%20HONOR", 400},
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/expedientes"+test.query, nil))
+		if w.Code != test.code {
+			t.Fatalf("%s: %d", test.query, w.Code)
+		}
+		if test.code == 200 && (fake.filters.Status != "ABIERTO" || fake.filters.Location != "CONSEJO DE ETICA" || fake.limit != 5 || fake.offset != 10) {
+			t.Fatal("filters or pagination lost")
+		}
+	}
+}
+
+func (f *fakeExpedientes) ListByDenunciante(ctx context.Context, id int64, limit, offset int, filter services.ExpedienteFilters) (services.ExpedienteList, error) {
+	f.participantID, f.participantRole = id, "denunciantes"
+	result, _ := f.List(ctx, limit, offset, filter)
+	return result, f.participantErr
+}
+func (f *fakeExpedientes) ListByDenunciado(ctx context.Context, id int64, limit, offset int, filter services.ExpedienteFilters) (services.ExpedienteList, error) {
+	f.participantID, f.participantRole = id, "denunciados"
+	result, _ := f.List(ctx, limit, offset, filter)
+	return result, f.participantErr
+}
+func TestParticipantExpedientesHTTP(t *testing.T) {
+	for _, role := range []string{"denunciantes", "denunciados"} {
+		fake := &fakeExpedientes{}
+		handler := Routes(nil, fake, nil, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/"+role+"/42/expedientes?status=CERRADO&location=TRIBUNAL%20DE%20HONOR&limit=5&offset=10", nil))
+		if w.Code != 200 || fake.participantID != 42 || fake.participantRole != role || fake.filters.Status != "CERRADO" || fake.filters.Location != "TRIBUNAL DE HONOR" || fake.limit != 5 || fake.offset != 10 {
+			t.Fatalf("participant expediente route failed: %s %d", role, w.Code)
+		}
+		for _, suffix := range []string{"0/expedientes", "x/expedientes", "42/expedientes?limit=0", "42/expedientes?offset=-1", "42/expedientes?status=OPEN", "42/expedientes?location=OTHER", "42/expedientes?status=ABIERTO&status=CERRADO", "42/expedientes?limit=1&limit=2"} {
+			w = httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest("GET", "/"+role+"/"+suffix, nil))
+			if w.Code != 400 {
+				t.Fatalf("invalid %s: %d", suffix, w.Code)
+			}
+		}
+		fake.participantErr = services.ErrParticipantNotFound
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/"+role+"/999/expedientes", nil))
+		if w.Code != 404 {
+			t.Fatal("missing participant must return 404")
+		}
+	}
+}
+
+func TestOpeningDateFiltersHTTP(t *testing.T) {
+	for _, path := range []string{"/expedientes", "/denunciantes/42/expedientes", "/denunciados/42/expedientes"} {
+		fake := &fakeExpedientes{}
+		handler := Routes(nil, fake, nil, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", path+"?from=2026-01-01&to=2026-12-31&status=ABIERTO&limit=10&offset=20", nil))
+		if w.Code != 200 || fake.filters.From != "2026-01-01" || fake.filters.To != "2026-12-31" || fake.filters.Status != "ABIERTO" || fake.limit != 10 || fake.offset != 20 {
+			t.Fatalf("date filters lost on %s: %d", path, w.Code)
+		}
+		for _, query := range []string{"?from=2026-02-30", "?to=30-10-2026", "?from=2026-12-31&to=2026-01-01", "?from=2026-01-01&from=2026-02-01", "?to=2026-01-01&to=2026-02-01"} {
+			w = httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest("GET", path+query, nil))
+			if w.Code != 400 {
+				t.Fatalf("invalid range on %s%s: %d", path, query, w.Code)
 			}
 		}
 	}

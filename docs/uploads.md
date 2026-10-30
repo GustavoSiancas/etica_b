@@ -1,4 +1,4 @@
-# Subida directa de imágenes a R2
+# Subida directa de archivos a R2
 
 No hay autenticación ni usuarios. El documento debe existir en `documents` antes de solicitar una firma. Aplicar las migraciones y seeds según el README; estos endpoints no crean documentos.
 
@@ -33,12 +33,12 @@ Ejecutar `go run ./cmd/app`. Ahora permanece escuchando HTTP; Ctrl+C inicia su c
 
 ## Flujo del frontend
 
-1. `POST /documents/123/upload-url` con `{"content_type":"image/png"}`. Devuelve `upload_url`, `file_url`, `method`, `headers`, `expires_in` (300 segundos) y `max_size_bytes` (10 MiB). Admite PNG, JPEG, WebP y GIF. La clave se genera con aleatoriedad criptográfica bajo `documents/123/`.
+1. `POST /documents/123/upload-url` con `{"content_type":"image/png"}`. Devuelve `upload_url`, `file_url`, `method`, `headers`, `expires_in` (300 segundos) y `max_size_bytes` (10 MiB). Admite PNG, JPEG, WebP, GIF, PDF, DOC y DOCX. La clave se genera con aleatoriedad criptográfica bajo `documents/123/`.
 2. Subir el archivo binario directamente a `upload_url` mediante PUT, usando exactamente los headers devueltos. No usar multipart ni enviar el archivo al backend.
 3. `PATCH /documents/123/file-url` con `{"file_url":"<file_url recibido>"}`. El backend verifica pertenencia al prefijo del documento, existencia, Content-Type declarado y tamaño del objeto mediante HeadObject. Solo entonces actualiza `documents.file_url` y `updated_at`. No guarda la URL firmada ni el binario.
 
 ```javascript
-async function uploadImage(documentId, file) {
+async function uploadFile(documentId, file) {
   const api = 'http://localhost:8080';
   const signatureResponse = await fetch(`${api}/documents/${documentId}/upload-url`, {
     method: 'POST',
@@ -47,7 +47,7 @@ async function uploadImage(documentId, file) {
   });
   if (!signatureResponse.ok) throw new Error('No se pudo generar la firma');
   const signature = await signatureResponse.json();
-  if (file.size > signature.max_size_bytes) throw new Error('Imagen demasiado grande');
+  if (file.size > signature.max_size_bytes) throw new Error('Archivo demasiado grande');
   const uploaded = await fetch(signature.upload_url, {
     method: signature.method, headers: signature.headers, body: file
   });
@@ -63,6 +63,8 @@ async function uploadImage(documentId, file) {
 ```
 
 Errores: 400 petición inválida, 404 documento inexistente, 502 objeto no verificable en R2, 500 error interno. Las respuestas no contienen credenciales ni errores SQL.
+
+Solicitar firma o confirmar una carga devuelve 409 si el documento pertenece a algún expediente `CERRADO`. La confirmación vuelve a comprobar el estado al guardar, incluso si se emitió la firma cuando estaba abierto. Una firma ya emitida puede seguir vigente en R2, pero no permite confirmar el enlace mientras el expediente esté cerrado.
 
 ## Límites del flujo
 

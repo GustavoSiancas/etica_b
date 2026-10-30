@@ -1,93 +1,105 @@
-﻿# Expedientes
+# Expedientes
 
-Cada expediente recibe un c?digo consecutivo ?nico (`1-2026`, `2-2026`, etc.), una descripcion y un tipo de inicio. Al crearlo tambi?n se env?a `opening_date`, la fecha de apertura. Es independiente de `created_at`, que registra cu?ndo se cre? en el sistema. Puede ser una fecha pasada o futura.
+Cada expediente recibe un `number` consecutivo anual (`1-2026`, `2-2026`, etc.) generado por PostgreSQL según el año de `opening_date`. No existe `code`. La fecha de apertura indicada por el usuario es independiente de `created_at`; acepta fechas pasadas o futuras.
 
-## Opciones de inicio
+Por ejemplo, aperturas en 2025 reciben `1-2025`, `2-2025`, etc.; aperturas en 2026 usan otro contador: `1-2026`, `2-2026`, etc. El año de registro en el sistema no determina el número. La migración 003 actualiza automáticamente el trigger al arrancar y conserva los números ya asignados.
 
-`GET /tipos-inicio` devuelve los valores que el frontend puede seleccionar:
+## Crear y listar
 
-```json
-[
-  {"value":"DENUNCIA_DE_OFICIO","label":"DENUNCIA DE OFICIO"},
-  {"value":"DENUNCIA_DE_PARTE","label":"DENUNCIA DE PARTE"},
-  {"value":"COMUNICACIONES_DE_ENTIDADES_PUBLICAS","label":"COMUNICACIONES DE ENTIDADES PUBLICAS"},
-  {"value":"COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP","label":"COMUNICACIONES DE SANCION IMPUESTA POR PJ O MP"},
-  {"value":"APROBADO_POR_ASAMBLEA_GENERAL","label":"APROBADO POR ASAMBLEA GENERAL"}
-]
-```
-
-## Estados sugeridos
-
-`GET /expediente-statuses` devuelve el cat?logo inicial para poblar selectores del frontend:
-
-```json
-[
-  {"value":"OPEN","label":"Abierto"},
-  {"value":"IN_PROGRESS","label":"En proceso"},
-  {"value":"CLOSED","label":"Cerrado"}
-]
-```
-
-El PATCH de estado contin?a aceptando texto libre de hasta 30 caracteres; este cat?logo es una lista sugerida y no restringe otros valores.
-
-## Crear expediente
-
-Enviar el valor elegido. El cliente no envía el código consecutivo ni el estado:
+`GET /tipos-inicio` devuelve los tipos permitidos: `DENUNCIA_DE_OFICIO`, `DENUNCIA_DE_PARTE`, `COMUNICACIONES_DE_ENTIDADES_PUBLICAS`, `COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP` y `APROBADO_POR_ASAMBLEA_GENERAL`.
 
 ```http
 POST /expedientes
 Content-Type: application/json
 
-{"description":"Caso de ejemplo","opening_date":"2026-10-20","init_type":"DENUNCIA_DE_PARTE","denunciante_ids":[1,2],"denunciado_ids":[3]}
+{"description":"Caso de ejemplo","opening_date":"2026-10-30","init_type":"DENUNCIA_DE_PARTE","denunciante_ids":[1,2],"denunciado_ids":[3]}
 ```
 
-La respuesta `201 Created` incluye el valor enum directamente:
+`opening_date` e `init_type` son obligatorios. La descripción es opcional y se guarda como texto vacío si se omite. Las listas de participantes son opcionales; los IDs deben existir, ser positivos y no repetirse. La creación guarda expediente y asociaciones en una transacción. Los participantes se cargan inicialmente y no existen endpoints para cambiar las asociaciones después.
+
+El estado y la ubicación iniciales siempre son `ABIERTO` y `DIRECCION DE ETICA`. No se aceptan esos campos en la creación.
+
+Respuesta 201:
 
 ```json
 {
   "id": 2,
-  "code": "2-2026",
   "number": "2-2026",
   "description": "Caso de ejemplo",
-  "opening_date": "2026-10-20",
+  "opening_date": "2026-10-30",
   "init_type": "DENUNCIA_DE_PARTE",
-  "status": "OPEN",
-  "created_at": "2026-10-15T17:00:00Z",
-  "updated_at": "2026-10-15T17:00:00Z"
+  "status": "ABIERTO",
+  "location": "DIRECCION DE ETICA",
+  "created_at": "2026-10-30T15:00:00Z",
+  "updated_at": "2026-10-30T15:00:00Z"
 }
 ```
 
-La descripcion es opcional: puede omitirse o enviarse como texto vacio. Si no se indica, se guarda y devuelve como `""`. `opening_date` es obligatorio. La fecha usa el formato `YYYY-MM-DD`; no se compara con la fecha actual, as? que admite fechas futuras. Un valor ausente o desconocido de `init_type` devuelve 400. PostgreSQL restringe la columna al enum. Al añadir un valor, ejecutar `ALTER TYPE expediente_init_type_enum ADD VALUE 'NUEVO_VALOR';` y actualizar la lista estática de opciones en `internal/services/expedientes.go`.
+`GET /expedientes?limit=20&offset=0` devuelve `{data,total,limit,offset}` ordenado por creación descendente e ID. `limit` admite 1–100 y `offset` desde cero. Incluye `status` y `location` para cada expediente.
 
-Los IDs de participantes se envian en `denunciante_ids` y `denunciado_ids`. Deben existir previamente por la carga inicial. Las listas admiten cero o mas IDs, sin duplicados ni valores no positivos. El servicio crea expediente y asociaciones en una sola transaccion; si falta un participante devuelve 404 y revierte toda la operacion. No existen POST separados para asociar participantes despues.
+Filtros opcionales, combinables con la paginación:
 
-## Listar expedientes
+- `status=ABIERTO` o `status=CERRADO`. Si se omite, lista ambos estados.
+- `location=DIRECCION%20DE%20ETICA`, `location=CONSEJO%20DE%20ETICA` o `location=TRIBUNAL%20DE%20HONOR`. Si se omite, lista todas las ubicaciones.
+- `from=2026-10-01` y `to=2026-10-31`: filtran la fecha de apertura (`opening_date`), incluyendo ambos días. Se permite enviar solo un límite. Si se envían ambos, `from` debe ser menor o igual que `to`. Fechas inválidas, formatos distintos de YYYY-MM-DD o parámetros repetidos devuelven 400. Con un límite de fecha se excluyen expedientes sin fecha de apertura.
 
-`GET /expedientes?limit=20&offset=0`. limit predeterminado 20, mínimo 1 y máximo 100. offset predeterminado 0 y no negativo. Orden `created_at DESC, id DESC`. Los expedientes existentes anteriores a esta función pueden tener `init_type: null` porque su tipo de origen se desconoce.
+```http
+GET /expedientes?from=2026-10-01&to=2026-10-31&status=ABIERTO&limit=20&offset=0
+```
+
+El mismo rango está disponible en los [expedientes por denunciante y denunciado](expedientes-por-participante.md). Se combina con los demás filtros antes de contar y paginar.
+
+Ejemplo: `GET /expedientes?status=ABIERTO&location=CONSEJO%20DE%20ETICA&limit=20&offset=0`. `total` cuenta todos los resultados filtrados antes de aplicar `limit` y `offset`. Valores desconocidos o filtros repetidos devuelven 400.
+
+## Estado
+
+`GET /expediente-statuses` devuelve exclusivamente:
 
 ```json
-{"data":[],"total":0,"limit":20,"offset":0}
+[
+  {"value":"ABIERTO","label":"Abierto"},
+  {"value":"CERRADO","label":"Cerrado"}
+]
 ```
 
-## Migración
-
-El esquema completo esta en `migrations/001_initial.up.sql` y se aplica una sola vez a una base nueva. `migrations/001_initial.down.sql` revierte la instalacion eliminando los datos. No hay pasos incrementales ni actualizacion automatica de bases anteriores. No usar AutoMigrate.
-
-## Ejemplo PowerShell
-
-```powershell
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/tipos-inicio'
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/expedientes' -ContentType 'application/json' -Body '{"description":"Caso de ejemplo","opening_date":"2026-10-20","init_type":"DENUNCIA_DE_PARTE","denunciante_ids":[1,2],"denunciado_ids":[3]}'
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/expedientes?limit=20&offset=0'
-```
-
-
-## Actualizar estado
-
-`PATCH /expedientes/{id}/status` acepta cualquier estado de texto de hasta 30 caracteres no vac?os. Se eliminan espacios al inicio y final; no hay cat?logo fijo de estados.
+`PATCH /expedientes/{id}/status` cierra o reabre explícitamente:
 
 ```json
-{"status":"EN INVESTIGACION"}
+{"status":"CERRADO"}
 ```
 
-Devuelve `200` con el expediente actualizado, `400` si el ID o estado son inv?lidos y `404` si el expediente no existe.
+Para reabrir, enviar `{"status":"ABIERTO"}`. El cambio conserva la ubicación. Estados anteriores como OPEN, CLOSED, IN_PROGRESS o cualquier texto libre devuelven 400.
+
+## Ubicación
+
+`GET /expediente-locations` devuelve los valores permitidos:
+
+- `DIRECCION DE ETICA`
+- `CONSEJO DE ETICA`
+- `TRIBUNAL DE HONOR`
+
+`PATCH /expedientes/{id}/location`:
+
+```json
+{"location":"CONSEJO DE ETICA"}
+```
+
+La ubicación es independiente del estado y puede cambiarse con el expediente ABIERTO o CERRADO. Cambiarla conserva el estado y no desbloquea su contenido. Ambos PATCH devuelven el expediente completo actualizado (200); datos inválidos producen 400 y un expediente inexistente 404.
+
+## Cierre y bloqueo de información
+
+Un expediente CERRADO se puede consultar, pero devuelve 409 al intentar:
+
+- Crear, editar, mover, ordenar o eliminar secciones y subsecciones.
+- Crear documentos dentro de sus secciones, vincularlos o desvincularlos.
+- Editar o eliminar documentos vinculados, incluso desde endpoints globales.
+- Solicitar firmas de carga o confirmar enlaces de sus documentos.
+- Agregar asociaciones de participantes desde servicios internos.
+
+Los documentos compartidos se bloquean para edición si cualquiera de sus expedientes está cerrado. Las lecturas siguen disponibles. Un documento independiente sin vínculos puede crearse o editarse porque todavía no pertenece a un expediente; vincularlo a uno cerrado está bloqueado.
+
+Reabrir mediante el endpoint de estado habilita nuevamente las operaciones. Si otro propietario de un documento compartido sigue cerrado, ese documento continúa bloqueado. Las mutaciones se coordinan con locks de base de datos para evitar escrituras simultáneas al cierre. Una firma de carga emitida antes de cerrar puede seguir vigente en R2, pero su confirmación no modifica el documento mientras el expediente esté cerrado.
+
+## Esquema
+
+`001_initial.up.sql` es la única migración consolidada para bases nuevas. Incluye restricciones SQL para los dos estados y las tres ubicaciones. La migraci?n 002 se aplica al arrancar para a?adir ubicaci?n y convertir los estados anteriores en bases existentes; no usar AutoMigrate. Las reglas de cierre se aplican en los servicios de la aplicación; las herramientas de reset y limpieza de desarrollo siguen siendo operaciones administrativas de prueba.

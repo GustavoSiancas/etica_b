@@ -1,1 +1,2408 @@
-{"openapi":"3.0.3","info":{"title":"API MÃ³dulo de Ã‰tica CAL","version":"1.0.0","description":"Expedientes, documentos y participantes. No requiere autenticaciÃ³n."},"servers":[{"url":"/","description":"Servidor actual"}],"tags":[{"name":"Expedientes"},{"name":"Participantes"},{"name":"Documentos"},{"name":"Carga de archivos"},{"name":"Escritos"},{"name":"Desarrollo"}],"paths":{"/tipos-inicio":{"get":{"tags":["Expedientes"],"summary":"Listar tipos de inicio","responses":{"200":{"description":"Opciones permitidas","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/InitType"}}}}}}}},"/expedientes":{"post":{"tags":["Expedientes"],"summary":"Crear expediente","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CreateExpediente"}}}},"responses":{"201":{"description":"Creado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Expediente"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"409":{"$ref":"#/components/responses/Conflict"},"404":{"$ref":"#/components/responses/NotFound"}},"description":"Crea el expediente y sus asociaciones permanentes a participantes en una sola transaccion. IDs duplicados/no positivos: 400; participante inexistente: 404. Cualquier error revierte toda la creacion."},"get":{"tags":["Expedientes"],"summary":"Listar expedientes","parameters":[{"$ref":"#/components/parameters/Limit"},{"$ref":"#/components/parameters/Offset"}],"responses":{"200":{"description":"Lista paginada","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ExpedientePage"}}}}}}},"/denunciantes":{"post":{"tags":["Participantes"],"summary":"Crear denunciante","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DenuncianteInput"}}}},"responses":{"201":{"description":"Creado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Denunciante"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"description":"Alta deshabilitada fuera de la carga inicial"}},"description":"Solo disponible para la carga inicial con ENABLE_INITIAL_PARTICIPANT_LOAD=true. Desactivado por defecto; devuelve 404 antes de procesar el cuerpo. Deshabilitar la bandera al terminar la carga."},"get":{"tags":["Participantes"],"summary":"Listar denunciantes","parameters":[{"$ref":"#/components/parameters/Limit"},{"$ref":"#/components/parameters/Offset"}],"responses":{"200":{"description":"Pagina de participantes","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/Denunciante"}},"total":{"type":"integer"},"limit":{"type":"integer"},"offset":{"type":"integer"}}}}}}}}},"/denunciados":{"post":{"tags":["Participantes"],"summary":"Crear denunciado","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DenunciadoInput"}}}},"responses":{"201":{"description":"Creado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Denunciado"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"description":"Alta deshabilitada fuera de la carga inicial"}},"description":"Solo disponible para la carga inicial con ENABLE_INITIAL_PARTICIPANT_LOAD=true. Desactivado por defecto; devuelve 404 antes de procesar el cuerpo. Deshabilitar la bandera al terminar la carga."},"get":{"tags":["Participantes"],"summary":"Listar denunciados","parameters":[{"$ref":"#/components/parameters/Limit"},{"$ref":"#/components/parameters/Offset"}],"responses":{"200":{"description":"Pagina de participantes","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/Denunciado"}},"total":{"type":"integer"},"limit":{"type":"integer"},"offset":{"type":"integer"}}}}}}}}},"/expedientes/{id}/denunciantes":{"get":{"tags":["Participantes"],"summary":"Listar denunciantes fijos del expediente","parameters":[{"$ref":"#/components/parameters/ExpedienteId"}],"responses":{"200":{"description":"Asociaciones permanentes ordenadas por ID","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/ParticipantMembership"}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}}},"/expedientes/{id}/denunciados":{"get":{"tags":["Participantes"],"summary":"Listar denunciados fijos del expediente","parameters":[{"$ref":"#/components/parameters/ExpedienteId"}],"responses":{"200":{"description":"Asociaciones permanentes ordenadas por ID","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/ParticipantMembership"}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}}},"/expedientes/{id}/documents":{"post":{"tags":["Documentos"],"summary":"Crear documento del expediente","parameters":[{"$ref":"#/components/parameters/ExpedienteId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CreateDocument"}}}},"responses":{"201":{"description":"Documento creado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Document"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}},"get":{"tags":["Documentos"],"summary":"Listar documentos del expediente por fecha","parameters":[{"$ref":"#/components/parameters/ExpedienteId"}],"responses":{"200":{"description":"Orden ascendente por document_date (nulos al final), created_at e ID; no depende de los diccionarios.","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/Document"}}}}},"404":{"$ref":"#/components/responses/NotFound"}}}},"/documents/{id}/upload-url":{"post":{"tags":["Carga de archivos"],"summary":"Generar URL temporal de subida a R2","parameters":[{"$ref":"#/components/parameters/DocumentId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["content_type"],"properties":{"content_type":{"type":"string","enum":["image/png","image/jpeg","image/webp","image/gif"]}}}}}},"responses":{"200":{"description":"URL PUT temporal por 5 minutos"},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}}},"/documents/{id}/file-url":{"patch":{"tags":["Carga de archivos"],"summary":"Verificar objeto R2 y guardar URL pÃºblica","parameters":[{"$ref":"#/components/parameters/DocumentId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["file_url"],"properties":{"file_url":{"type":"string","format":"uri"}}}}}},"responses":{"200":{"description":"URL guardada"},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"},"502":{"description":"No se pudo verificar objeto R2"}}}},"/escritos":{"post":{"tags":["Escritos"],"summary":"Crear escrito","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CreateEscrito"}}}},"responses":{"201":{"description":"Escrito creado en estado NUEVA","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Escrito"}}}},"400":{"$ref":"#/components/responses/BadRequest"}}},"get":{"tags":["Escritos"],"summary":"Listar escritos paginados con filtro opcional por estado","parameters":[{"$ref":"#/components/parameters/Limit"},{"$ref":"#/components/parameters/Offset"},{"name":"status","in":"query","required":false,"schema":{"type":"string","enum":["NUEVA","ATENDIDA"]},"description":"Filtra por estado; omitelo para listar ambos"}],"responses":{"200":{"description":"Pagina ordenada por created_at e ID ascendente; status puede filtrar NUEVA o ATENDIDA","content":{"application/json":{"schema":{"$ref":"#/components/schemas/EscritoPage"}}}},"400":{"$ref":"#/components/responses/BadRequest"}}}},"/escritos/{id}/status":{"patch":{"tags":["Escritos"],"summary":"Actualizar estado de escrito","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"integer","format":"int64","minimum":1}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["status"],"properties":{"status":{"type":"string","enum":["ATENDIDA"],"description":"Un escrito solo puede avanzar de NUEVA a ATENDIDA"}}}}}},"responses":{"200":{"description":"Estado actualizado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Escrito"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"El escrito ya fue atendido y no puede cambiar nuevamente"}}}},"/escritos/{id}/upload-url":{"post":{"tags":["Escritos"],"summary":"Generar URL para subir archivo opcional del escrito a R2","parameters":[{"$ref":"#/components/parameters/EscritoId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["content_type"],"properties":{"content_type":{"type":"string","enum":["application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","image/png","image/jpeg","image/webp","image/gif"]}}}}}},"responses":{"200":{"description":"URL temporal PUT por cinco minutos"},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}}},"/escritos/{id}/file-url":{"patch":{"tags":["Escritos"],"summary":"Verificar archivo subido y asociarlo al escrito","parameters":[{"$ref":"#/components/parameters/EscritoId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["file_url"],"properties":{"file_url":{"type":"string","format":"uri"}}}}}},"responses":{"200":{"description":"Archivo asociado"},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"},"502":{"description":"No se pudo verificar el objeto R2"}}}},"/expedientes/{id}/status":{"patch":{"tags":["Expedientes"],"summary":"Actualizar estado del expediente","parameters":[{"$ref":"#/components/parameters/ExpedienteId"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["status"],"properties":{"status":{"type":"string","minLength":1,"maxLength":30,"description":"Estado libre, se recortan espacios al inicio y final"}}}}}},"responses":{"200":{"description":"Estado actualizado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Expediente"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"404":{"$ref":"#/components/responses/NotFound"}}}},"/document-stages":{"get":{"tags":["Documentos"],"summary":"Consultar diccionario de etapas y subetapas","description":"Etapas activas con subetapas anidadas para el selector. Puede elegirse el nombre de una etapa general o de una subetapa y enviarse como stage. OTROS y valores libres tambien son validos.","responses":{"200":{"description":"Cat?logo de etapas con subetapas anidadas","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/DocumentStageCatalog"}}}}}}}},"/expediente-statuses":{"get":{"tags":["Expedientes"],"summary":"Listar estados sugeridos para expedientes","description":"Cat?logo inicial de estados sugeridos para el frontend. PATCH /expedientes/{id}/status sigue aceptando texto libre de hasta 30 caracteres.","responses":{"200":{"description":"Estados sugeridos","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/ExpedienteStatus"}}}}}}}},"/dev/demo-data/reset":{"get":{"tags":["Desarrollo"],"summary":"Reiniciar y cargar datos ficticios","description":"Solo disponible con ENABLE_DEMO_RESET=true. Reemplaza filas [DEMO] y participantes is_demo. Carga 104 denunciantes y 154 denunciados con identidad ficticia y colegiatura en registration_number, un documento por subetapa activa y expediente (45 inicialmente) y 6 escritos con enlaces PDF publicos. Repone diccionarios faltantes y conserva datos ajenos al fixture. Requiere el esquema consolidado. Solo desarrollo y pruebas.","responses":{"200":{"description":"Fixture cargado","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DemoDataSummary"}}}},"404":{"description":"Ruta deshabilitada"}}}},"/dev/database/clear":{"delete":{"tags":["Desarrollo"],"summary":"Borrar todos los registros conservando las tablas","description":"Solo disponible con ENABLE_DATABASE_CLEAR=true. Elimina todos los registros y catalogos de la aplicacion y reinicia las identidades. No elimina archivos de R2.","responses":{"200":{"description":"Registros eliminados; tablas conservadas","content":{"application/json":{"schema":{"type":"object","properties":{"message":{"type":"string"}}}}}},"404":{"description":"Servicio deshabilitado"},"500":{"description":"Borrado fallido; transaccion revertida"}}}},"/document-types":{"get":{"tags":["Documentos"],"summary":"Consultar diccionario de tipos de documento","description":"Opciones activas para el selector, ordenadas por sort_order e ID. Al crear se envia el nombre como texto; tambien se aceptan otros valores.","responses":{"200":{"description":"Tipos disponibles","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/DocumentTypeEntry"}}}}}}}}},"components":{"parameters":{"Limit":{"name":"limit","in":"query","schema":{"type":"integer","default":20,"minimum":1,"maximum":100}},"Offset":{"name":"offset","in":"query","schema":{"type":"integer","default":0,"minimum":0}},"ExpedienteId":{"name":"id","in":"path","required":true,"schema":{"type":"integer","format":"int64","minimum":1}},"ParticipantId":{"name":"participant_id","in":"path","required":true,"schema":{"type":"integer","format":"int64","minimum":1}},"DocumentId":{"name":"id","in":"path","required":true,"schema":{"type":"integer","format":"int64","minimum":1}},"EscritoId":{"name":"id","in":"path","required":true,"schema":{"type":"integer","format":"int64","minimum":1}}},"responses":{"BadRequest":{"description":"PeticiÃ³n o campos invÃ¡lidos"},"NotFound":{"description":"Recurso no encontrado"},"Conflict":{"description":"Codigo duplicado o participante ya asociado al expediente"},"ParticipantPage":{"description":"PÃ¡gina de participantes","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/Participant"}},"total":{"type":"integer"},"limit":{"type":"integer"},"offset":{"type":"integer"}}}}}}},"schemas":{"ParticipantMembership":{"type":"object","properties":{"id":{"type":"integer","format":"int64","description":"ID de la asociacion al expediente"},"expediente_id":{"type":"integer","format":"int64"},"participant":{"$ref":"#/components/schemas/Participant"}}},"InitType":{"type":"object","properties":{"value":{"type":"string","enum":["DENUNCIA_DE_OFICIO","DENUNCIA_DE_PARTE","COMUNICACIONES_DE_ENTIDADES_PUBLICAS","COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP","APROBADO_POR_ASAMBLEA_GENERAL"]},"label":{"type":"string"}}},"CreateExpediente":{"type":"object","required":["opening_date","init_type"],"properties":{"init_type":{"type":"string","enum":["DENUNCIA_DE_OFICIO","DENUNCIA_DE_PARTE","COMUNICACIONES_DE_ENTIDADES_PUBLICAS","COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP","APROBADO_POR_ASAMBLEA_GENERAL"]},"opening_date":{"type":"string","format":"date","nullable":false,"description":"Fecha de apertura del expediente; puede ser futura o pasada"},"description":{"type":"string","description":"Descripcion opcional. Puede omitirse o enviarse vacia; se guarda como texto vacio cuando no se indica."},"denunciante_ids":{"type":"array","uniqueItems":true,"items":{"type":"integer","format":"int64","minimum":1},"description":"IDs de participantes existentes; se asocian solo al crear el expediente. Omitir o enviar [] cuando no corresponda."},"denunciado_ids":{"type":"array","uniqueItems":true,"items":{"type":"integer","format":"int64","minimum":1},"description":"IDs de participantes existentes; se asocian solo al crear el expediente. Omitir o enviar [] cuando no corresponda."}}},"Expediente":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"code":{"type":"string","example":"1-2026"},"number":{"type":"string"},"init_type":{"type":"string","nullable":true},"status":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"},"opening_date":{"type":"string","format":"date","nullable":true},"description":{"type":"string","description":"Descripcion del expediente, texto libre"}}},"ExpedientePage":{"type":"object","properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/Expediente"}},"total":{"type":"integer"},"limit":{"type":"integer"},"offset":{"type":"integer"}}},"Participant":{"anyOf":[{"$ref":"#/components/schemas/Denunciante"},{"$ref":"#/components/schemas/Denunciado"}]},"CreateDocument":{"type":"object","required":["title","stage","type"],"properties":{"title":{"type":"string","maxLength":255},"document_date":{"type":"string","format":"date","nullable":true},"file_url":{"type":"string","format":"uri","nullable":true},"stage":{"type":"string","minLength":1,"description":"Texto libre: nombre de etapa general, subetapa, OTROS u otro valor. Sin FK al diccionario."},"type":{"type":"string","minLength":1,"description":"Tipo de documento como texto libre; permite OTROS y valores fuera del diccionario."}}},"Document":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"expediente_id":{"type":"integer","format":"int64"},"title":{"type":"string"},"file_url":{"type":"string","format":"uri","nullable":true},"document_date":{"type":"string","format":"date","nullable":true},"status":{"type":"string"},"stage":{"type":"string","minLength":1,"description":"Texto libre: nombre de etapa general, subetapa, OTROS u otro valor. Sin FK al diccionario."},"type":{"type":"string","minLength":1,"description":"Tipo de documento como texto libre; permite OTROS y valores fuera del diccionario."}}},"CreateEscrito":{"type":"object","required":["title","type","expediente_number"],"properties":{"title":{"type":"string","maxLength":255},"expediente_number":{"type":"string","maxLength":50,"description":"N?mero indicado del expediente, guardado como texto sin FK"},"document_date":{"type":"string","format":"date","nullable":true},"file_url":{"type":"string","format":"uri","nullable":true,"description":"URL HTTPS opcional; tambi?n puede adjuntarse subiendo el archivo con los endpoints de carga de escritos."},"type":{"type":"string","maxLength":100,"description":"Tipo libre indicado por el frontend"},"denunciante_ids":{"type":"array","items":{"type":"integer","format":"int64"},"description":"Remitentes denunciantes; se exige al menos un ID en una de las dos listas"},"denunciado_ids":{"type":"array","items":{"type":"integer","format":"int64"},"description":"Remitentes denunciados; se exige al menos un ID en una de las dos listas"}}},"Escrito":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"title":{"type":"string"},"expediente_number":{"type":"string"},"document_date":{"type":"string","format":"date","nullable":true},"file_url":{"type":"string","format":"uri","nullable":true},"status":{"type":"string","enum":["NUEVA","ATENDIDA"]},"created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"},"type":{"type":"string"},"denunciantes":{"type":"array","items":{"$ref":"#/components/schemas/Denunciante"}},"denunciados":{"type":"array","items":{"$ref":"#/components/schemas/Denunciado"}}}},"EscritoPage":{"type":"object","properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/Escrito"}},"total":{"type":"integer"},"limit":{"type":"integer"},"offset":{"type":"integer"}}},"DocumentSubstageEntry":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"code":{"type":"string"},"name":{"type":"string"},"sort_order":{"type":"integer"}}},"DocumentStageCatalog":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"code":{"type":"string"},"name":{"type":"string"},"sort_order":{"type":"integer"},"substages":{"type":"array","items":{"$ref":"#/components/schemas/DocumentSubstageEntry"}}}},"ExpedienteStatus":{"type":"object","properties":{"value":{"type":"string","enum":["OPEN","IN_PROGRESS","CLOSED"]},"label":{"type":"string"}}},"DemoDataSummary":{"type":"object","properties":{"expedientes":{"type":"integer"},"denunciantes":{"type":"integer"},"denunciados":{"type":"integer"},"documents":{"type":"integer"},"escritos":{"type":"integer"}}},"DenuncianteInput":{"type":"object","required":["name","document_type","document_number"],"properties":{"name":{"type":"string","maxLength":255},"document_type":{"type":"string","enum":["DNI","RUC","CE"]},"document_number":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Numero como texto; conserva ceros iniciales"}}},"Denunciante":{"type":"object","properties":{"name":{"type":"string","maxLength":255},"document_type":{"type":"string","enum":["DNI","RUC","CE"],"nullable":true},"document_number":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Numero como texto; conserva ceros iniciales","nullable":true},"id":{"type":"integer","format":"int64"}}},"DenunciadoInput":{"type":"object","required":["name","document_type","document_number","registration_number"],"properties":{"name":{"type":"string","maxLength":255},"document_type":{"type":"string","enum":["DNI","CE"]},"document_number":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Numero como texto; conserva ceros iniciales"},"registration_number":{"type":"integer","format":"int64","minimum":1,"description":"Numero de colegiatura"}}},"Denunciado":{"type":"object","properties":{"name":{"type":"string","maxLength":255},"document_type":{"type":"string","enum":["DNI","CE"],"nullable":true},"document_number":{"type":"string","pattern":"^[0-9]{1,20}$","description":"Numero como texto; conserva ceros iniciales","nullable":true},"registration_number":{"type":"integer","format":"int64","minimum":1,"description":"Numero de colegiatura","nullable":true},"id":{"type":"integer","format":"int64"}}},"DocumentTypeEntry":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"code":{"type":"string"},"name":{"type":"string"},"sort_order":{"type":"integer"}}}}}}
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API MÃƒÂ³dulo de Ãƒâ€°tica CAL",
+    "version": "1.0.0",
+    "description": "Expedientes con estado ABIERTO/CERRADO y ubicacion independiente. El cierre permite consultas y bloquea informacion hasta reabrir explicitamente. Secciones jerarquicas y documentos compartidos."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Servidor actual"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Expedientes"
+    },
+    {
+      "name": "Participantes"
+    },
+    {
+      "name": "Documentos"
+    },
+    {
+      "name": "Carga de archivos"
+    },
+    {
+      "name": "Desarrollo"
+    },
+    {
+      "name": "Secciones"
+    }
+  ],
+  "paths": {
+    "/tipos-inicio": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Listar tipos de inicio",
+        "responses": {
+          "200": {
+            "description": "Opciones permitidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitType"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expedientes": {
+      "post": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Crear expediente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExpediente"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expediente"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Crea el expediente y sus asociaciones permanentes a participantes en una sola transaccion. IDs duplicados/no positivos: 400; participante inexistente: 404. Cualquier error revierte toda la creacion."
+      },
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Listar expedientes",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ABIERTO",
+                "CERRADO"
+              ]
+            },
+            "description": "Omitir para listar ambos estados."
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DIRECCION DE ETICA",
+                "CONSEJO DE ETICA",
+                "TRIBUNAL DE HONOR"
+              ]
+            },
+            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura minima inclusiva (YYYY-MM-DD). Se permite sin to. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura maxima inclusiva (YYYY-MM-DD). Se permite sin from. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpedientePage"
+                }
+              }
+            }
+          }
+        },
+        "description": " Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha."
+      }
+    },
+    "/denunciantes": {
+      "post": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Crear denunciante",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DenuncianteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denunciante"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Alta deshabilitada fuera de la carga inicial"
+          }
+        },
+        "description": "Solo disponible para la carga inicial con ENABLE_INITIAL_PARTICIPANT_LOAD=true. Desactivado por defecto; devuelve 404 antes de procesar el cuerpo. Deshabilitar la bandera al terminar la carga."
+      },
+      "get": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Listar denunciantes",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Busqueda parcial por nombre o numero de documento. Nombre sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "Nombre parcial sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "description": "Tipo de documento exacto; se normaliza a mayusculas.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DNI",
+                "RUC",
+                "CE"
+              ]
+            }
+          },
+          {
+            "name": "document_number",
+            "in": "query",
+            "required": false,
+            "description": "Numero de documento exacto como texto; conserva ceros iniciales.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,20}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pagina de participantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Denunciante"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "description": "Listado paginado ordenado por ID ascendente. Todos los filtros se combinan con AND; total cuenta solo coincidencias antes de paginar. Sin coincidencias devuelve data: []."
+      }
+    },
+    "/denunciados": {
+      "post": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Crear denunciado",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DenunciadoInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denunciado"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Alta deshabilitada fuera de la carga inicial"
+          }
+        },
+        "description": "Solo disponible para la carga inicial con ENABLE_INITIAL_PARTICIPANT_LOAD=true. Desactivado por defecto; devuelve 404 antes de procesar el cuerpo. Deshabilitar la bandera al terminar la carga."
+      },
+      "get": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Listar denunciados",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Busqueda parcial por nombre o numero de documento o colegiatura. Nombre sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "Nombre parcial sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "description": "Tipo de documento exacto; se normaliza a mayusculas.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DNI",
+                "CE"
+              ]
+            }
+          },
+          {
+            "name": "document_number",
+            "in": "query",
+            "required": false,
+            "description": "Numero de documento exacto como texto; conserva ceros iniciales.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,20}$"
+            }
+          },
+          {
+            "name": "registration_number",
+            "in": "query",
+            "required": false,
+            "description": "Colegiatura exacta, entero positivo.",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pagina de participantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Denunciado"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "description": "Listado paginado ordenado por ID ascendente. Todos los filtros se combinan con AND; total cuenta solo coincidencias antes de paginar. Sin coincidencias devuelve data: []."
+      }
+    },
+    "/expedientes/{id}/denunciantes": {
+      "get": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Listar denunciantes fijos del expediente",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpedienteId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asociaciones permanentes ordenadas por ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ParticipantMembership"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/expedientes/{id}/denunciados": {
+      "get": {
+        "tags": [
+          "Participantes"
+        ],
+        "summary": "Listar denunciados fijos del expediente",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpedienteId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asociaciones permanentes ordenadas por ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ParticipantMembership"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/expedientes/{id}/documents": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "List unique documents from all sections of an expediente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Document"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/documents/{id}/upload-url": {
+      "post": {
+        "tags": [
+          "Carga de archivos"
+        ],
+        "summary": "Generar URL temporal de subida a R2",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DocumentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content_type"
+                ],
+                "properties": {
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "image/png",
+                      "image/jpeg",
+                      "image/webp",
+                      "image/gif",
+                      "application/pdf",
+                      "application/msword",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "URL PUT temporal por 5 minutos"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      }
+    },
+    "/documents/{id}/file-url": {
+      "patch": {
+        "tags": [
+          "Carga de archivos"
+        ],
+        "summary": "Verificar objeto R2 y guardar URL pÃƒÂºblica",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DocumentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file_url"
+                ],
+                "properties": {
+                  "file_url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "URL guardada"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "502": {
+            "description": "No se pudo verificar objeto R2"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      }
+    },
+    "/expedientes/{id}/status": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Cerrar o reabrir expediente",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpedienteId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ABIERTO",
+                      "CERRADO"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expediente"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Solo ABIERTO o CERRADO. Permite reabrir un expediente cerrado; conserva su ubicacion."
+      }
+    },
+    "/expediente-statuses": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Estados permitidos: ABIERTO y CERRADO",
+        "description": "Cat?logo inicial de estados sugeridos para el frontend. PATCH /expedientes/{id}/status sigue aceptando texto libre de hasta 30 caracteres.",
+        "responses": {
+          "200": {
+            "description": "Estados sugeridos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpedienteStatus"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dev/demo-data/reset": {
+      "get": {
+        "tags": [
+          "Desarrollo"
+        ],
+        "summary": "Releer el SQL inicial e insertar colegiados faltantes",
+        "description": "Solo con ENABLE_DEMO_RESET=true. Relee demo_data.sql y demo_data_denuncianes.sql para insertar participantes faltantes. No actualiza ni borra registros y no crea expedientes ni documentos.",
+        "responses": {
+          "200": {
+            "description": "Fixture cargado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoDataSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ruta deshabilitada"
+          }
+        }
+      }
+    },
+    "/dev/database/clear": {
+      "delete": {
+        "tags": [
+          "Desarrollo"
+        ],
+        "summary": "Borrar todos los registros conservando las tablas",
+        "description": "Solo disponible con ENABLE_DATABASE_CLEAR=true. Elimina todos los registros y catalogos de la aplicacion y reinicia las identidades. No elimina archivos de R2.",
+        "responses": {
+          "200": {
+            "description": "Registros eliminados; tablas conservadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Servicio deshabilitado"
+          },
+          "500": {
+            "description": "Borrado fallido; transaccion revertida"
+          }
+        }
+      }
+    },
+    "/document-types": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Consultar diccionario de tipos de documento",
+        "description": "Opciones activas para el selector, ordenadas por sort_order e ID. Al crear se envia el nombre como texto; tambien se aceptan otros valores.",
+        "responses": {
+          "200": {
+            "description": "Tipos disponibles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentTypeEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "post": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Create an independent document",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDocument"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "List documents",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/documents/{documentID}": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Get document",
+        "parameters": [
+          {
+            "name": "documentID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Update shared document",
+        "parameters": [
+          {
+            "name": "documentID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocument"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Delete unlinked document",
+        "parameters": [
+          {
+            "name": "documentID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/sections": {
+      "post": {
+        "tags": [
+          "Secciones"
+        ],
+        "summary": "Create section or subsection",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Section"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSection"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Secciones"
+        ],
+        "summary": "List all sections as a flat hierarchy",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Section"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Includes all levels. Rebuild the tree using expediente_section_parent_id. Ordered by parent, sort_order and id."
+      }
+    },
+    "/expedientes/{expedienteID}/sections/{sectionID}": {
+      "get": {
+        "tags": [
+          "Secciones"
+        ],
+        "summary": "Get section",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Section"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Secciones"
+        ],
+        "summary": "Edit, reorder or move section",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Section"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSection"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Secciones"
+        ],
+        "summary": "Delete section without children; preserve documents",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/sections/{sectionID}/documents": {
+      "post": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Create document and link to section atomically",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDocument"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "List documents directly linked to section",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Document"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/sections/{sectionID}/documents/{documentID}": {
+      "post": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Link existing document (idempotent)",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "documentID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Unlink document without deleting it",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sectionID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "documentID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Expediente CERRADO (incluido cualquier propietario de un documento compartido), seccion con hijas o documento con vinculos. Reabrir o resolver dependencias antes de modificar."
+          }
+        }
+      }
+    },
+    "/expediente-locations": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Ubicaciones permitidas",
+        "responses": {
+          "200": {
+            "description": "Tres ubicaciones disponibles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpedienteLocation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expedientes/{id}/location": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Cambiar ubicacion de un expediente abierto o cerrado",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "location"
+                ],
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "enum": [
+                      "DIRECCION DE ETICA",
+                      "CONSEJO DE ETICA",
+                      "TRIBUNAL DE HONOR"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expediente actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expediente"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Permite cambiar location en estado ABIERTO o CERRADO. Conserva el estado y no habilita cambios de contenido."
+      }
+    },
+    "/denunciantes/{id}/expedientes": {
+      "get": {
+        "tags": [
+          "Expedientes",
+          "Participantes"
+        ],
+        "summary": "Listar expedientes por denunciante",
+        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID interno del participante; no es DNI, RUC ni numero de CAL."
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ABIERTO",
+                "CERRADO"
+              ]
+            },
+            "description": "Omitir para listar ambos estados."
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DIRECCION DE ETICA",
+                "CONSEJO DE ETICA",
+                "TRIBUNAL DE HONOR"
+              ]
+            },
+            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura minima inclusiva (YYYY-MM-DD). Se permite sin to. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura maxima inclusiva (YYYY-MM-DD). Se permite sin from. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pagina de expedientes asociados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpedientePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/denunciados/{id}/expedientes": {
+      "get": {
+        "tags": [
+          "Expedientes",
+          "Participantes"
+        ],
+        "summary": "Listar expedientes por denunciado",
+        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID interno del participante; no es DNI, RUC ni numero de CAL."
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ABIERTO",
+                "CERRADO"
+              ]
+            },
+            "description": "Omitir para listar ambos estados."
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DIRECCION DE ETICA",
+                "CONSEJO DE ETICA",
+                "TRIBUNAL DE HONOR"
+              ]
+            },
+            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura minima inclusiva (YYYY-MM-DD). Se permite sin to. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Fecha de apertura maxima inclusiva (YYYY-MM-DD). Se permite sin from. from debe ser menor o igual que to. Las fechas invalidas o repetidas devuelven 400."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pagina de expedientes asociados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpedientePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0
+        }
+      },
+      "ExpedienteId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
+        }
+      },
+      "ParticipantId": {
+        "name": "participant_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
+        }
+      },
+      "DocumentId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "PeticiÃƒÂ³n o campos invÃƒÂ¡lidos"
+      },
+      "NotFound": {
+        "description": "Recurso no encontrado"
+      },
+      "Conflict": {
+        "description": "Codigo duplicado o participante ya asociado al expediente"
+      },
+      "ParticipantPage": {
+        "description": "PÃƒÂ¡gina de participantes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Participant"
+                  }
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "limit": {
+                  "type": "integer"
+                },
+                "offset": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ParticipantMembership": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "ID de la asociacion al expediente"
+          },
+          "expediente_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "participant": {
+            "$ref": "#/components/schemas/Participant"
+          }
+        }
+      },
+      "InitType": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "enum": [
+              "DENUNCIA_DE_OFICIO",
+              "DENUNCIA_DE_PARTE",
+              "COMUNICACIONES_DE_ENTIDADES_PUBLICAS",
+              "COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP",
+              "APROBADO_POR_ASAMBLEA_GENERAL"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateExpediente": {
+        "type": "object",
+        "required": [
+          "opening_date",
+          "init_type"
+        ],
+        "properties": {
+          "init_type": {
+            "type": "string",
+            "enum": [
+              "DENUNCIA_DE_OFICIO",
+              "DENUNCIA_DE_PARTE",
+              "COMUNICACIONES_DE_ENTIDADES_PUBLICAS",
+              "COMUNICACIONES_DE_SANCION_IMPUESTA_POR_PJ_O_MP",
+              "APROBADO_POR_ASAMBLEA_GENERAL"
+            ]
+          },
+          "opening_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": false,
+            "description": "Fecha de apertura del expediente; puede ser futura o pasada"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripcion opcional. Puede omitirse o enviarse vacia; se guarda como texto vacio cuando no se indica."
+          },
+          "denunciante_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "IDs de participantes existentes; se asocian solo al crear el expediente. Omitir o enviar [] cuando no corresponda."
+          },
+          "denunciado_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "IDs de participantes existentes; se asocian solo al crear el expediente. Omitir o enviar [] cuando no corresponda."
+          }
+        },
+        "description": "Crea siempre con status ABIERTO y location DIRECCION DE ETICA. No se aceptan status ni location en la creacion."
+      },
+      "Expediente": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "number": {
+            "type": "string",
+            "example": "1-2026",
+            "description": "Consecutivo anual basado en opening_date, por ejemplo 1-2025. Cada anio de apertura tiene un contador independiente; created_at no determina el numero. Los numeros previamente asignados se conservan."
+          },
+          "init_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ],
+            "default": "ABIERTO"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "opening_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Descripcion del expediente, texto libre"
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR"
+            ],
+            "default": "DIRECCION DE ETICA"
+          }
+        }
+      },
+      "ExpedientePage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Expediente"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      },
+      "Participant": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Denunciante"
+          },
+          {
+            "$ref": "#/components/schemas/Denunciado"
+          }
+        ]
+      },
+      "CreateDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "file_url": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Optional HTTPS URL; null clears it."
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "file_url": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Optional HTTPS URL; null clears it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ExpedienteStatus": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "DemoDataSummary": {
+        "type": "object",
+        "properties": {
+          "denunciados": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total de denunciados registrados despues de la carga, incluidos los existentes."
+          },
+          "denunciantes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total de denunciantes despues de cargar ambos archivos SQL."
+          }
+        }
+      },
+      "DenuncianteInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "document_type",
+          "document_number"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "DNI",
+              "RUC",
+              "CE"
+            ]
+          },
+          "document_number": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "Numero como texto; conserva ceros iniciales"
+          }
+        }
+      },
+      "Denunciante": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "DNI",
+              "RUC",
+              "CE"
+            ],
+            "nullable": true
+          },
+          "document_number": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "Numero como texto; conserva ceros iniciales",
+            "nullable": true
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DenunciadoInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "document_type",
+          "document_number",
+          "registration_number"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "DNI",
+              "CE"
+            ]
+          },
+          "document_number": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "Numero como texto; conserva ceros iniciales"
+          },
+          "registration_number": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Numero de colegiatura"
+          }
+        }
+      },
+      "Denunciado": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "DNI",
+              "CE"
+            ],
+            "nullable": true
+          },
+          "document_number": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "Numero como texto; conserva ceros iniciales",
+            "nullable": true
+          },
+          "registration_number": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Numero de colegiatura",
+            "nullable": true
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DocumentTypeEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sort_order": {
+            "type": "integer"
+          }
+        }
+      },
+      "UpdateDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "file_url": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Optional HTTPS URL; null clears it."
+          }
+        }
+      },
+      "DocumentPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      },
+      "CreateSection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "expediente_section_parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true,
+            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Free text; independent from document-types."
+          },
+          "document_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "color_hex": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "default": "#808080"
+          }
+        }
+      },
+      "UpdateSection": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "expediente_section_parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true,
+            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Free text; independent from document-types."
+          },
+          "document_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "color_hex": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "default": "#808080"
+          }
+        },
+        "description": "Partial update. Explicit null clears parent/date; omitted fields are preserved."
+      },
+      "Section": {
+        "type": "object",
+        "properties": {
+          "expediente_section_parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true,
+            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Free text; independent from document-types."
+          },
+          "document_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "color_hex": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "default": "#808080"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "expediente_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ExpedienteLocation": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

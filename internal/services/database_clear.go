@@ -26,9 +26,9 @@ func (s *DatabaseClearService) Clear(ctx context.Context) error {
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`TRUNCATE TABLE
-			escrito_denunciados, escrito_denunciantes, escritos,
+			expediente_section_documents, expediente_section,
 			expediente_denunciados, expediente_denunciantes, denunciados, denunciantes,
-			documents, document_substages, document_stages, document_types, expediente_year_counters, expedientes
+			documents, document_types, expediente_year_counters, expedientes
 			RESTART IDENTITY RESTRICT`).Error; err != nil {
 			return err
 		}

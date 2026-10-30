@@ -5,6 +5,7 @@ import (
 	"etica_back/internal/services"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type ParticipantAPI interface {
@@ -12,8 +13,8 @@ type ParticipantAPI interface {
 	ListDenunciadosByExpediente(context.Context, int64) ([]services.ParticipantMembershipResponse, error)
 	CreateDenunciante(context.Context, services.CreateDenuncianteInput) (services.ParticipantResponse, error)
 	CreateDenunciado(context.Context, services.CreateDenunciadoInput) (services.ParticipantResponse, error)
-	ListDenunciantes(context.Context, int, int) ([]services.ParticipantResponse, int64, error)
-	ListDenunciados(context.Context, int, int) ([]services.ParticipantResponse, int64, error)
+	ListDenunciantes(context.Context, int, int, services.ParticipantFilters) ([]services.ParticipantResponse, int64, error)
+	ListDenunciados(context.Context, int, int, services.ParticipantFilters) ([]services.ParticipantResponse, int64, error)
 }
 
 func registerParticipants(mux *http.ServeMux, service ParticipantAPI, initialLoad bool) {
@@ -83,7 +84,12 @@ func registerParticipants(mux *http.ServeMux, service ParticipantAPI, initialLoa
 			failure(w, services.ErrParticipantInvalid)
 			return
 		}
-		data, total, err := service.ListDenunciantes(r.Context(), limit, offset)
+		filters, err := participantFilters(r)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		data, total, err := service.ListDenunciantes(r.Context(), limit, offset, filters)
 		if err != nil {
 			failure(w, err)
 			return
@@ -96,7 +102,12 @@ func registerParticipants(mux *http.ServeMux, service ParticipantAPI, initialLoa
 			failure(w, services.ErrParticipantInvalid)
 			return
 		}
-		data, total, err := service.ListDenunciados(r.Context(), limit, offset)
+		filters, err := participantFilters(r)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		data, total, err := service.ListDenunciados(r.Context(), limit, offset, filters)
 		if err != nil {
 			failure(w, err)
 			return
@@ -135,4 +146,25 @@ func parsePositiveID(raw string) (int64, error) {
 		return 0, services.ErrParticipantInvalid
 	}
 	return id, nil
+}
+
+func participantFilters(r *http.Request) (services.ParticipantFilters, error) {
+	query := r.URL.Query()
+	for _, key := range []string{"q", "name", "document_type", "document_number", "registration_number"} {
+		if len(query[key]) > 1 {
+			return services.ParticipantFilters{}, services.ErrParticipantInvalid
+		}
+	}
+	filters := services.ParticipantFilters{Q: query.Get("q"), Name: query.Get("name"), DocumentType: query.Get("document_type"), DocumentNumber: query.Get("document_number")}
+	if values, ok := query["registration_number"]; ok {
+		if len(values) != 1 {
+			return filters, services.ErrParticipantInvalid
+		}
+		number, err := strconv.ParseInt(strings.TrimSpace(values[0]), 10, 64)
+		if err != nil || number <= 0 {
+			return filters, services.ErrParticipantInvalid
+		}
+		filters.RegistrationNumber = &number
+	}
+	return filters, nil
 }

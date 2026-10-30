@@ -6,3 +6,5 @@ bin/
 coverage.out
 .cache/
 .gocache/
+
+__pycache__/

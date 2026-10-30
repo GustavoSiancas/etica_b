@@ -109,3 +109,19 @@ func ApplyInitialMigration(ctx context.Context, db *gorm.DB, migrationPath strin
 	}
 	return true, nil
 }
+
+// ApplyUpgradeMigration runs a transactional, versioned upgrade script.
+// Each SQL script serializes concurrent starts and records its own version.
+func ApplyUpgradeMigration(ctx context.Context, db *gorm.DB, migrationPath string) error {
+	data, err := os.ReadFile(filepath.Clean(migrationPath))
+	if err != nil {
+		return fmt.Errorf("read upgrade migration: %w", err)
+	}
+	return db.WithContext(ctx).Connection(func(conn *gorm.DB) error {
+		if err := conn.Exec(string(data)).Error; err != nil {
+			conn.Exec("ROLLBACK")
+			return err
+		}
+		return nil
+	})
+}

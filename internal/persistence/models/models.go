@@ -12,86 +12,57 @@ type Expediente struct {
 	Description string     `gorm:"type:text;not null;default:(-)"`
 	OpeningDate *time.Time `gorm:"type:date"`
 	Number      string     `gorm:"type:varchar(50);not null;uniqueIndex;default:(-)"`
-	Code        string     `gorm:"type:varchar(50);not null;uniqueIndex;default:(-)"`
-	Status      string     `gorm:"type:varchar(30);not null;default:OPEN"`
+	Status      string     `gorm:"type:varchar(30);not null;default:ABIERTO"`
+	Location    string     `gorm:"type:varchar(30);not null;default:DIRECCION DE ETICA"`
 	InitType    *string    `gorm:"type:expediente_init_type_enum"`
 	Audit
-	Documents    []Document              `gorm:"foreignKey:ExpedienteID"`
+	Sections     []ExpedienteSection     `gorm:"foreignKey:ExpedienteID"`
 	Denunciantes []ExpedienteDenunciante `gorm:"foreignKey:ExpedienteID"`
 	Denunciados  []ExpedienteDenunciado  `gorm:"foreignKey:ExpedienteID"`
 }
 
-type DocumentStage struct {
-	ID        int64              `gorm:"primaryKey;autoIncrement"`
-	Code      string             `gorm:"type:varchar(60);not null;uniqueIndex"`
-	Name      string             `gorm:"type:varchar(120);not null"`
-	SortOrder int                `gorm:"not null"`
-	IsActive  bool               `gorm:"not null;default:true"`
-	Substages []DocumentSubstage `gorm:"foreignKey:StageID"`
-}
-
-type DocumentSubstage struct {
-	ID        int64         `gorm:"primaryKey;autoIncrement"`
-	StageID   int64         `gorm:"not null;index"`
-	Code      string        `gorm:"type:varchar(70);not null;uniqueIndex"`
-	Name      string        `gorm:"type:varchar(150);not null"`
-	SortOrder int           `gorm:"not null"`
-	IsActive  bool          `gorm:"not null;default:true"`
-	Stage     DocumentStage `gorm:"foreignKey:StageID"`
-}
-
 type Document struct {
-	ID           int64      `gorm:"primaryKey;autoIncrement"`
-	ExpedienteID int64      `gorm:"not null;index"`
-	Name         string     `gorm:"type:varchar(255);not null"`
-	FileURL      *string    `gorm:"type:text"`
-	DocumentDate *time.Time `gorm:"type:date"`
-
-	Stage  string `gorm:"type:text;not null"`
-	Type   string `gorm:"type:text;not null"`
-	Status string `gorm:"type:varchar(30);not null;default:DRAFT"`
+	ID      int64   `gorm:"primaryKey;autoIncrement"`
+	Name    string  `gorm:"type:varchar(255);not null"`
+	FileURL *string `gorm:"type:text"`
 	Audit
-	Expediente Expediente `gorm:"foreignKey:ExpedienteID"`
 }
 
-type Escrito struct {
-	ID               int64      `gorm:"primaryKey;autoIncrement"`
-	Title            string     `gorm:"type:varchar(255);not null"`
-	Type             string     `gorm:"type:varchar(100);not null"`
-	ExpedienteNumber string     `gorm:"type:varchar(50);not null;index"`
-	DocumentDate     *time.Time `gorm:"type:date"`
-	FileURL          *string    `gorm:"type:text"`
-	Status           string     `gorm:"type:varchar(20);not null;default:NUEVA"`
+type ExpedienteSection struct {
+	ID                        int64 `gorm:"primaryKey;autoIncrement"`
+	ExpedienteID              int64 `gorm:"not null;index"`
+	ExpedienteSectionParentID *int64
+	Name                      string     `gorm:"type:text;not null"`
+	Type                      string     `gorm:"type:text;not null"`
+	DocumentDate              *time.Time `gorm:"type:date"`
+	SortOrder                 int        `gorm:"not null"`
+	ColorHex                  string     `gorm:"type:varchar(7);not null;default:#808080"`
 	Audit
-	Denunciantes []EscritoDenunciante `gorm:"foreignKey:EscritoID"`
-	Denunciados  []EscritoDenunciado  `gorm:"foreignKey:EscritoID"`
 }
 
-type EscritoDenunciante struct {
-	EscritoID     int64       `gorm:"primaryKey;autoIncrement:false"`
-	DenuncianteID int64       `gorm:"primaryKey;autoIncrement:false"`
-	Escrito       Escrito     `gorm:"foreignKey:EscritoID"`
-	Denunciante   Denunciante `gorm:"foreignKey:DenuncianteID"`
+type ExpedienteSectionDocument struct {
+	ExpedienteSectionID int64 `gorm:"primaryKey;autoIncrement:false"`
+	DocumentID          int64 `gorm:"primaryKey;autoIncrement:false"`
 }
 
-type EscritoDenunciado struct {
-	EscritoID    int64      `gorm:"primaryKey;autoIncrement:false"`
-	DenunciadoID int64      `gorm:"primaryKey;autoIncrement:false"`
-	Escrito      Escrito    `gorm:"foreignKey:EscritoID"`
-	Denunciado   Denunciado `gorm:"foreignKey:DenunciadoID"`
+type ExpedienteYearCounter struct {
+	Year       int   `gorm:"primaryKey;autoIncrement:false"`
+	LastNumber int64 `gorm:"not null"`
 }
 
 type Denunciante struct {
-	ID   int64  `gorm:"primaryKey;autoIncrement"`
-	Name string `gorm:"type:varchar(255);not null"`
+	ID     int64  `gorm:"primaryKey;autoIncrement"`
+	Name   string `gorm:"type:varchar(255);not null"`
+	IsDemo bool   `gorm:"not null;default:false"`
 	Audit
 	DocumentType   *string `gorm:"type:varchar(3)"`
 	DocumentNumber *string `gorm:"type:varchar(20)"`
 }
 
 type Denunciado struct {
-	ID   int64  `gorm:"primaryKey;autoIncrement"`
-	Name string `gorm:"type:varchar(255);not null"`
+	ID     int64  `gorm:"primaryKey;autoIncrement"`
+	Name   string `gorm:"type:varchar(255);not null"`
+	IsDemo bool   `gorm:"not null;default:false"`
 	Audit
 	DocumentType       *string `gorm:"type:varchar(3)"`
 	DocumentNumber     *string `gorm:"type:varchar(20)"`
@@ -115,12 +86,7 @@ type ExpedienteDenunciado struct {
 }
 
 func (Expediente) TableName() string            { return "expedientes" }
-func (DocumentStage) TableName() string         { return "document_stages" }
-func (DocumentSubstage) TableName() string      { return "document_substages" }
 func (Document) TableName() string              { return "documents" }
-func (Escrito) TableName() string               { return "escritos" }
-func (EscritoDenunciante) TableName() string    { return "escrito_denunciantes" }
-func (EscritoDenunciado) TableName() string     { return "escrito_denunciados" }
 func (Denunciante) TableName() string           { return "denunciantes" }
 func (Denunciado) TableName() string            { return "denunciados" }
 func (ExpedienteDenunciante) TableName() string { return "expediente_denunciantes" }
@@ -135,3 +101,7 @@ type DocumentType struct {
 }
 
 func (DocumentType) TableName() string { return "document_types" }
+
+func (ExpedienteSection) TableName() string         { return "expediente_section" }
+func (ExpedienteSectionDocument) TableName() string { return "expediente_section_documents" }
+func (ExpedienteYearCounter) TableName() string     { return "expediente_year_counters" }

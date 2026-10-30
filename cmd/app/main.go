@@ -24,7 +24,7 @@ func run() error {
 		return err
 	}
 	slog.Info("configuration loaded", "http_addr", cfg.HTTPAddr, "demo_reset_enabled", cfg.EnableDemoReset, "database_clear_enabled", cfg.EnableDatabaseClear, "initial_participant_load_enabled", cfg.EnableInitialParticipantLoad)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	slog.Info("startup: connecting to PostgreSQL")
 	db, pool, err := postgres.Open(ctx, cfg.DatabaseURL)
@@ -38,7 +38,20 @@ func run() error {
 	} else if applied {
 		log.Printf("Applied consolidated initial migration")
 	}
-	slog.Info("startup: initial migration checked; checking R2 bucket")
+	for _, migration := range []string{"migrations/002_expediente_state_location.up.sql", "migrations/003_expediente_opening_year.up.sql"} {
+		slog.Info("startup: checking upgrade migration", "migration", migration)
+		if err := postgres.ApplyUpgradeMigration(ctx, db, migration); err != nil {
+			return fmt.Errorf("PostgreSQL upgrade %s: %s", migration, postgres.DiagnoseMigration(err))
+		}
+	}
+	seed := services.NewDemoDataService(db, "seeds/demo_data.sql", cfg.EnableDemoReset, "seeds/demo_data_denuncianes.sql")
+	slog.Info("startup: loading initial participants")
+	summary, seedErr := seed.Load(ctx)
+	if seedErr != nil {
+		return fmt.Errorf("initial participant load: %s", postgres.DiagnoseMigration(seedErr))
+	}
+	slog.Info("startup: initial participants loaded", "denunciados_total", summary.Denunciados, "denunciantes_total", summary.Denunciantes)
+	slog.Info("startup: checking R2 bucket")
 	if err = r2.Check(ctx, r2.New(cfg), cfg.R2Bucket); err != nil {
 		return fmt.Errorf("R2: %s", r2.Diagnose(err))
 	}
@@ -46,7 +59,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Routes(service, services.NewExpedienteService(db), services.NewDocumentService(db), services.NewParticipantService(db), httpapi.RoutesOption{EnableInitialParticipantLoad: cfg.EnableInitialParticipantLoad, DatabaseClear: services.NewDatabaseClearService(db, cfg.EnableDatabaseClear), Escrito: services.NewEscritoService(db), DemoData: services.NewDemoDataService(db, "seeds/demo_data.sql", cfg.EnableDemoReset)}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.Routes(service, services.NewExpedienteService(db), services.NewDocumentService(db), services.NewParticipantService(db), httpapi.RoutesOption{EnableInitialParticipantLoad: cfg.EnableInitialParticipantLoad, DatabaseClear: services.NewDatabaseClearService(db, cfg.EnableDatabaseClear), DemoData: seed}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stop, stopSignal := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stopSignal()
 	done := make(chan struct{})

@@ -12,7 +12,6 @@ import (
 
 type RoutesOption struct {
 	EnableInitialParticipantLoad bool
-	Escrito                      EscritoAPI
 	DemoData                     DemoDataAPI
 	DatabaseClear                DatabaseClearAPI
 }
@@ -29,7 +28,8 @@ type DemoDataAPI interface {
 func Routes(service *services.UploadService, expedientes ExpedienteAPI, documents DocumentAPI, participants ParticipantAPI, options ...RoutesOption) http.Handler {
 	mux := http.NewServeMux()
 	registerSwagger(mux)
-	registerExpedientes(mux, expedientes, documents)
+	registerExpedientes(mux, expedientes)
+	registerDocuments(mux, documents)
 	initialLoad := len(options) > 0 && options[0].EnableInitialParticipantLoad
 	registerParticipants(mux, participants, initialLoad)
 	if len(options) > 0 {
@@ -41,9 +41,6 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 				}
 				respond(w, http.StatusOK, map[string]string{"message": "all application records deleted; tables preserved"})
 			})
-		}
-		if options[0].Escrito != nil {
-			registerEscritos(mux, options[0].Escrito)
 		}
 		if demo := options[0].DemoData; demo != nil {
 			mux.HandleFunc("GET /dev/demo-data/reset", func(w http.ResponseWriter, r *http.Request) {
@@ -78,43 +75,6 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 			return
 		}
 		respond(w, 200, result)
-	})
-	mux.HandleFunc("POST /escritos/{id}/upload-url", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id <= 0 {
-			failure(w, services.ErrInvalid)
-			return
-		}
-		var body struct {
-			ContentType string `json:"content_type"`
-		}
-		if !decode(w, r, &body) {
-			return
-		}
-		result, err := service.SignEscrito(r.Context(), id, body.ContentType)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
-	mux.HandleFunc("PATCH /escritos/{id}/file-url", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id <= 0 {
-			failure(w, services.ErrInvalid)
-			return
-		}
-		var body struct {
-			FileURL string `json:"file_url"`
-		}
-		if !decode(w, r, &body) {
-			return
-		}
-		if err := service.ConfirmEscrito(r.Context(), id, body.FileURL); err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, map[string]string{"file_url": body.FileURL})
 	})
 	mux.HandleFunc("PATCH /documents/{id}/file-url", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -183,9 +143,27 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, services.ErrParticipantDuplicate):
 		status = 409
 		message = "participant already belongs to expediente"
+	case errors.Is(err, services.ErrSectionInvalid):
+		status = 400
+		message = "invalid section fields, parent or hierarchy cycle"
+	case errors.Is(err, services.ErrSectionNotFound):
+		status = 404
+		message = "section not found in expediente"
+	case errors.Is(err, services.ErrSectionDocumentNotFound):
+		status = 404
+		message = "document link not found in section"
+	case errors.Is(err, services.ErrSectionHasChildren):
+		status = 409
+		message = "move or delete child sections first"
+	case errors.Is(err, services.ErrDocumentLinked):
+		status = 409
+		message = "detach document from all sections first"
 	case errors.Is(err, services.ErrDocumentInvalid):
 		status = 400
 		message = "invalid document fields"
+	case errors.Is(err, services.ErrExpedienteClosed):
+		status = http.StatusConflict
+		message = "expediente is CERRADO; reopen it before modifying information"
 	case errors.Is(err, services.ErrExpedienteNotFound):
 		status = 404
 		message = "expediente not found"
@@ -197,22 +175,13 @@ func failure(w http.ResponseWriter, err error) {
 		message = "expediente number already exists"
 	case errors.Is(err, services.ErrInvalid):
 		status = 400
-		message = "invalid request body, image type, size or file URL"
+		message = "invalid request body, file type, size or file URL"
 	case errors.Is(err, services.ErrNotFound):
 		status = 404
 		message = "document not found"
 	case errors.Is(err, services.ErrStorage):
 		status = 502
 		message = "uploaded object could not be verified"
-	case errors.Is(err, services.ErrEscritoInvalid):
-		status = 400
-		message = "invalid escrito fields or pagination"
-	case errors.Is(err, services.ErrEscritoNotFound):
-		status = 404
-		message = "escrito not found"
-	case errors.Is(err, services.ErrEscritoAlreadyAttended):
-		status = 409
-		message = "escrito is already attended"
 	case errors.Is(err, services.ErrDemoResetDisabled):
 		status = 404
 		message = "not found"

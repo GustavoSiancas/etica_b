@@ -1,8 +1,11 @@
 BEGIN;
-DROP TABLE escrito_denunciados, escrito_denunciantes, escritos;
+DROP TABLE IF EXISTS app_schema_migrations;
+DROP TABLE expediente_section_documents;
+DROP TABLE expediente_section;
+DROP FUNCTION validate_expediente_section_tree();
 DROP TABLE expediente_denunciados, expediente_denunciantes;
 DROP TABLE denunciados, denunciantes;
-DROP TABLE documents, document_substages, document_stages, document_types;
+DROP TABLE documents, document_types;
 DROP TRIGGER expediente_auto_code ON expedientes;
 DROP FUNCTION assign_expediente_code();
 DROP FUNCTION next_expediente_code(INTEGER);

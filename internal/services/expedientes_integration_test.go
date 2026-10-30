@@ -84,17 +84,15 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 		t.Fatal("initial migration failed")
 	}
 
-	var year int
-	if err = db.Raw("SELECT EXTRACT(YEAR FROM statement_timestamp() AT TIME ZONE 'America/Lima')::integer").Scan(&year).Error; err != nil {
-		t.Fatal("cannot read Lima year")
-	}
+	year := 2021
+	opening := &Date{Time: time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)}
 	service := NewExpedienteService(db)
-	first, err := service.Create(ctx, CreateExpedienteInput{Description: "Expediente de prueba", OpeningDate: &Date{Time: time.Now()}, InitType: "DENUNCIA_DE_OFICIO"})
+	first, err := service.Create(ctx, CreateExpedienteInput{Description: "Expediente de prueba", OpeningDate: opening, InitType: "DENUNCIA_DE_OFICIO"})
 	if err != nil {
 		t.Fatal("create failed")
 	}
 	expectedFirst := fmt.Sprintf("1-%d", year)
-	if first.Code != expectedFirst || first.Number != first.Code || first.CreatedAt.IsZero() {
+	if first.Number != expectedFirst || first.CreatedAt.IsZero() {
 		t.Fatalf("incorrect generated response: %+v", first)
 	}
 	const count = 12
@@ -105,7 +103,7 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			result, err := service.Create(ctx, CreateExpedienteInput{Description: "Expediente de prueba", OpeningDate: &Date{Time: time.Now()}, InitType: "DENUNCIA_DE_OFICIO"})
+			result, err := service.Create(ctx, CreateExpedienteInput{Description: "Expediente de prueba", OpeningDate: opening, InitType: "DENUNCIA_DE_OFICIO"})
 			if err != nil {
 				errs <- err
 				return
@@ -119,12 +117,12 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 	if len(errs) > 0 {
 		t.Fatal("concurrent creation failed")
 	}
-	codes := map[string]bool{first.Code: true}
+	codes := map[string]bool{first.Number: true}
 	for result := range results {
-		if codes[result.Code] {
+		if codes[result.Number] {
 			t.Fatal("duplicate code")
 		}
-		codes[result.Code] = true
+		codes[result.Number] = true
 	}
 	for _, test := range []struct {
 		year int
@@ -150,11 +148,11 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 	if err != nil || list.Total != count+1 {
 		t.Fatal("list failed")
 	}
-	if err = db.Exec("UPDATE expedientes SET code=NULL WHERE id=?", first.ID).Error; err == nil {
-		t.Fatal("accepted null code")
+	if err = db.Exec("UPDATE expedientes SET number=NULL WHERE id=?", first.ID).Error; err == nil {
+		t.Fatal("accepted null number")
 	}
-	if err = db.Exec("UPDATE expedientes SET code=? WHERE id <> ?", first.Code, first.ID).Error; err == nil {
-		t.Fatal("accepted duplicate code")
+	if err = db.Exec("UPDATE expedientes SET number=? WHERE id <> ?", first.Number, first.ID).Error; err == nil {
+		t.Fatal("accepted duplicate number")
 	}
 	down, err := os.ReadFile("migrations/001_initial.down.sql")
 	if err != nil {

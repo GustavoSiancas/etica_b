@@ -12,9 +12,20 @@ import (
 
 	"etica_back/internal/persistence/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrExpedienteInvalid = errors.New("invalid expediente request")
+var ErrExpedienteClosed = errors.New("expediente is closed; reopen it before modifying information")
+
+const (
+	ExpedienteAbierto  = "ABIERTO"
+	ExpedienteCerrado  = "CERRADO"
+	UbicacionDireccion = "DIRECCION DE ETICA"
+	UbicacionConsejo   = "CONSEJO DE ETICA"
+	UbicacionTribunal  = "TRIBUNAL DE HONOR"
+)
+
 var ErrExpedienteDuplicate = errors.New("expediente number already exists")
 
 type Date struct{ time.Time }
@@ -53,9 +64,9 @@ type ExpedienteResponse struct {
 	Description string    `json:"description"`
 	OpeningDate *Date     `json:"opening_date"`
 	Number      string    `json:"number"`
-	Code        string    `json:"code"`
 	InitType    *string   `json:"init_type"`
 	Status      string    `json:"status"`
+	Location    string    `json:"location"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -80,14 +91,28 @@ var expedienteInitTypes = map[string]string{
 func ValidExpedienteInitType(value string) bool { _, ok := expedienteInitTypes[value]; return ok }
 
 var expedienteStatuses = []ExpedienteStatusResponse{
-	{Value: "OPEN", Label: "Abierto"},
-	{Value: "IN_PROGRESS", Label: "En proceso"},
-	{Value: "CLOSED", Label: "Cerrado"},
+	{Value: ExpedienteAbierto, Label: "Abierto"},
+	{Value: ExpedienteCerrado, Label: "Cerrado"},
+}
+
+type ExpedienteLocationResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+var expedienteLocations = []ExpedienteLocationResponse{
+	{Value: UbicacionDireccion, Label: "Direccion de Etica"},
+	{Value: UbicacionConsejo, Label: "Consejo de Etica"},
+	{Value: UbicacionTribunal, Label: "Tribunal de Honor"},
+}
+
+func validLocation(value string) bool {
+	return value == UbicacionDireccion || value == UbicacionConsejo || value == UbicacionTribunal
 }
 
 func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteInput) (ExpedienteResponse, error) {
 	input.Description = strings.TrimSpace(input.Description)
-	if !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
+	if !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || input.OpeningDate.Year() < 1 || input.OpeningDate.Year() > 9999 || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
 		return ExpedienteResponse{}, ErrExpedienteInvalid
 	}
 	initType := input.InitType
@@ -96,7 +121,7 @@ func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteIn
 		parsed := input.OpeningDate.Time
 		openingDate = &parsed
 	}
-	expediente := models.Expediente{Description: input.Description, OpeningDate: openingDate, Status: "OPEN", InitType: &initType}
+	expediente := models.Expediente{Description: input.Description, OpeningDate: openingDate, Status: ExpedienteAbierto, Location: UbicacionDireccion, InitType: &initType}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if len(input.DenuncianteIDs) > 0 {
 			var count int64
@@ -149,16 +174,92 @@ func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteIn
 	return expedienteResponse(expediente), nil
 }
 
-func (s *ExpedienteService) List(ctx context.Context, limit, offset int) (ExpedienteList, error) {
-	result := ExpedienteList{Data: make([]ExpedienteResponse, 0), Limit: limit, Offset: offset}
-	if limit < 1 || limit > 100 || offset < 0 {
+type ExpedienteFilters struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Status   string `json:"status"`
+	Location string `json:"location"`
+}
+
+func ValidExpedienteFilters(f ExpedienteFilters) bool {
+	for _, value := range []string{f.From, f.To} {
+		if value != "" {
+			date, err := time.Parse("2006-01-02", value)
+			if err != nil || date.Year() < 1 {
+				return false
+			}
+		}
+	}
+	if f.From != "" && f.To != "" && f.From > f.To {
+		return false
+	}
+	return (f.Status == "" || f.Status == ExpedienteAbierto || f.Status == ExpedienteCerrado) && (f.Location == "" || validLocation(f.Location))
+}
+func (s *ExpedienteService) List(ctx context.Context, limit, offset int, filters ...ExpedienteFilters) (ExpedienteList, error) {
+	if len(filters) > 1 {
+		return ExpedienteList{}, ErrExpedienteInvalid
+	}
+	var filter ExpedienteFilters
+	if len(filters) == 1 {
+		filter = filters[0]
+	}
+	return s.listExpedientes(ctx, limit, offset, filter, "", 0)
+}
+func (s *ExpedienteService) ListByDenunciante(ctx context.Context, id int64, limit, offset int, filter ExpedienteFilters) (ExpedienteList, error) {
+	return s.listExpedientes(ctx, limit, offset, filter, "denunciante", id)
+}
+func (s *ExpedienteService) ListByDenunciado(ctx context.Context, id int64, limit, offset int, filter ExpedienteFilters) (ExpedienteList, error) {
+	return s.listExpedientes(ctx, limit, offset, filter, "denunciado", id)
+}
+func (s *ExpedienteService) listExpedientes(ctx context.Context, limit, offset int, filter ExpedienteFilters, role string, participantID int64) (ExpedienteList, error) {
+	result := ExpedienteList{Data: []ExpedienteResponse{}, Limit: limit, Offset: offset}
+	if limit < 1 || limit > 100 || offset < 0 || !ValidExpedienteFilters(filter) {
 		return result, ErrExpedienteInvalid
 	}
-	if err := s.db.WithContext(ctx).Model(&models.Expediente{}).Count(&result.Total).Error; err != nil {
+	if role != "" && participantID <= 0 {
+		return result, ErrParticipantInvalid
+	}
+	db := s.db.WithContext(ctx)
+	query := db.Model(&models.Expediente{})
+	if role != "" {
+		var model any
+		var scope string
+		switch role {
+		case "denunciante":
+			model = &models.Denunciante{}
+			scope = "id IN (SELECT expediente_id FROM expediente_denunciantes WHERE denunciante_id = ?)"
+		case "denunciado":
+			model = &models.Denunciado{}
+			scope = "id IN (SELECT expediente_id FROM expediente_denunciados WHERE denunciado_id = ?)"
+		default:
+			return result, ErrParticipantInvalid
+		}
+		var count int64
+		if err := db.Model(model).Where("id = ?", participantID).Count(&count).Error; err != nil {
+			return result, err
+		}
+		if count == 0 {
+			return result, ErrParticipantNotFound
+		}
+		query = query.Where(scope, participantID)
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+	if filter.Location != "" {
+		query = query.Where("location = ?", filter.Location)
+	}
+	if filter.From != "" {
+		query = query.Where("opening_date >= ?", filter.From)
+	}
+	if filter.To != "" {
+		query = query.Where("opening_date <= ?", filter.To)
+	}
+	if err := query.Count(&result.Total).Error; err != nil {
 		return result, err
 	}
 	var rows []models.Expediente
-	if err := s.db.WithContext(ctx).Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	if err := query.Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return result, err
 	}
 	for _, row := range rows {
@@ -173,22 +274,48 @@ type UpdateExpedienteStatusInput struct {
 
 func (s *ExpedienteService) UpdateStatus(ctx context.Context, id int64, input UpdateExpedienteStatusInput) (ExpedienteResponse, error) {
 	status := strings.TrimSpace(input.Status)
-	if id <= 0 || status == "" || len([]rune(status)) > 30 || strings.ContainsRune(status, 0) {
+	if id <= 0 || (status != ExpedienteAbierto && status != ExpedienteCerrado) {
 		return ExpedienteResponse{}, ErrExpedienteInvalid
 	}
-	var expediente models.Expediente
-	err := s.db.WithContext(ctx).First(&expediente, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	var row models.Expediente
+	// A row lock serializes close/reopen against all expediente mutations.
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, id).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrExpedienteNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return tx.Model(&row).Update("status", status).Error
+	})
+	return expedienteResponse(row), err
+}
+
+type UpdateExpedienteLocationInput struct {
+	Location string `json:"location"`
+}
+
+func (s *ExpedienteService) UpdateLocation(ctx context.Context, id int64, input UpdateExpedienteLocationInput) (ExpedienteResponse, error) {
+	location := strings.TrimSpace(input.Location)
+	if id <= 0 || !validLocation(location) {
+		return ExpedienteResponse{}, ErrExpedienteInvalid
+	}
+	var row models.Expediente
+	// Location is administrative and remains editable while closed. Updating
+	// only this column preserves status and leaves all content guards intact.
+	result := s.db.WithContext(ctx).Model(&row).Clauses(clause.Returning{}).Where("id = ?", id).Update("location", location)
+	if result.Error != nil {
+		return ExpedienteResponse{}, result.Error
+	}
+	if result.RowsAffected == 0 {
 		return ExpedienteResponse{}, ErrExpedienteNotFound
 	}
-	if err != nil {
-		return ExpedienteResponse{}, err
-	}
-	if err := s.db.WithContext(ctx).Model(&expediente).Update("status", status).Error; err != nil {
-		return ExpedienteResponse{}, err
-	}
-	expediente.Status = status
-	return expedienteResponse(expediente), nil
+	return expedienteResponse(row), nil
+}
+
+func (s *ExpedienteService) ListLocations(context.Context) ([]ExpedienteLocationResponse, error) {
+	return append([]ExpedienteLocationResponse(nil), expedienteLocations...), nil
 }
 
 func (s *ExpedienteService) ListInitTypes(ctx context.Context) ([]ExpedienteInitTypeResponse, error) {
@@ -209,5 +336,5 @@ func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	if e.OpeningDate != nil {
 		openingDate = &Date{Time: *e.OpeningDate}
 	}
-	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, Code: e.Code, InitType: e.InitType, Status: e.Status, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, Status: e.Status, Location: e.Location, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
 }
