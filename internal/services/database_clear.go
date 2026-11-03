@@ -19,14 +19,14 @@ func NewDatabaseClearService(db *gorm.DB, enabled bool) *DatabaseClearService {
 	return &DatabaseClearService{db: db, enabled: enabled}
 }
 
-// Clear removes all application rows, including catalogs, and resets identities.
+// Clear removes application rows and resets identities; folder names are retained.
 func (s *DatabaseClearService) Clear(ctx context.Context) error {
 	if s == nil || !s.enabled {
 		return ErrDatabaseClearDisabled
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`TRUNCATE TABLE
-			expediente_section_documents, expediente_section,
+			expediente_section_documents, expediente_section, expediente_folders,
 			expediente_denunciados, expediente_denunciantes, denunciados, denunciantes,
 			documents, document_types, expediente_year_counters, expedientes
 			RESTART IDENTITY RESTRICT`).Error; err != nil {

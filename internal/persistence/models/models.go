@@ -16,6 +16,7 @@ type Expediente struct {
 	Location    string     `gorm:"type:varchar(30);not null;default:DIRECCION DE ETICA"`
 	InitType    *string    `gorm:"type:expediente_init_type_enum"`
 	Audit
+	Folders      []ExpedienteFolder      `gorm:"foreignKey:ExpedienteID"`
 	Sections     []ExpedienteSection     `gorm:"foreignKey:ExpedienteID"`
 	Denunciantes []ExpedienteDenunciante `gorm:"foreignKey:ExpedienteID"`
 	Denunciados  []ExpedienteDenunciado  `gorm:"foreignKey:ExpedienteID"`
@@ -28,7 +29,24 @@ type Document struct {
 	Audit
 }
 
+type FolderType struct {
+	ID   int64 `gorm:"primaryKey;autoIncrement"`
+	Name string
+}
+
+func (FolderType) TableName() string { return "folder_types" }
+
+type ExpedienteFolder struct {
+	ID           int64 `gorm:"primaryKey;autoIncrement"`
+	ExpedienteID int64
+	FolderTypeID int64
+	Audit
+}
+
+func (ExpedienteFolder) TableName() string { return "expediente_folders" }
+
 type ExpedienteSection struct {
+	ExpedienteFolderID        int64 `gorm:"not null;default:(-)"`
 	ID                        int64 `gorm:"primaryKey;autoIncrement"`
 	ExpedienteID              int64 `gorm:"not null;index"`
 	ExpedienteSectionParentID *int64

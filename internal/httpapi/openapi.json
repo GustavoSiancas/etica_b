@@ -1736,6 +1736,149 @@
           }
         }
       }
+    },
+    "/folder-types": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Nombres predefinidos de carpetas",
+        "responses": {
+          "200": {
+            "description": "Resultado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FolderType"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/folders": {
+      "parameters": [
+        {
+          "name": "expedienteID",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Carpetas del expediente",
+        "responses": {
+          "200": {
+            "description": "Resultado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Folder"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Agregar carpeta; devuelve la existente si ya tiene ese tipo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFolder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Resultado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tipo o identificador invalido"
+          },
+          "404": {
+            "description": "Expediente inexistente"
+          },
+          "409": {
+            "description": "Expediente cerrado"
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/folders/{folderID}/sections": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Secciones y subsecciones de una carpeta",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "folderID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Section"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Expediente o carpeta inexistente"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2266,7 +2409,7 @@
             "format": "int64",
             "minimum": 1,
             "nullable": true,
-            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+            "description": "NULL para raiz; el padre debe pertenecer al mismo expediente y carpeta. Se rechazan ciclos."
           },
           "name": {
             "type": "string",
@@ -2291,6 +2434,12 @@
             "type": "string",
             "pattern": "^#[0-9A-Fa-f]{6}$",
             "default": "#808080"
+          },
+          "expediente_folder_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Carpeta del mismo expediente. Al crear, si se omite hereda la del padre o usa EXPEDIENTE PRINCIPAL."
           }
         }
       },
@@ -2304,7 +2453,7 @@
             "format": "int64",
             "minimum": 1,
             "nullable": true,
-            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+            "description": "NULL para raiz; el padre debe pertenecer al mismo expediente y carpeta. Se rechazan ciclos."
           },
           "name": {
             "type": "string",
@@ -2341,7 +2490,7 @@
             "format": "int64",
             "minimum": 1,
             "nullable": true,
-            "description": "NULL for root; otherwise a section in the same expediente. Cycles are rejected."
+            "description": "NULL para raiz; el padre debe pertenecer al mismo expediente y carpeta. Se rechazan ciclos."
           },
           "name": {
             "type": "string",
@@ -2384,6 +2533,12 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "expediente_folder_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Carpeta del mismo expediente. Al crear, si se omite hereda la del padre o usa EXPEDIENTE PRINCIPAL."
           }
         }
       },
@@ -2400,6 +2555,64 @@
           },
           "label": {
             "type": "string"
+          }
+        }
+      },
+      "FolderType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Folder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "expediente_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "folder_type_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateFolder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "folder_type_id"
+        ],
+        "properties": {
+          "folder_type_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
           }
         }
       }

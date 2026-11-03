@@ -20,6 +20,7 @@ var ErrSectionDocumentNotFound = errors.New("document link not found in section"
 var sectionColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 type CreateSectionInput struct {
+	FolderID     *int64  `json:"expediente_folder_id"`
 	ParentID     *int64  `json:"expediente_section_parent_id"`
 	Name         string  `json:"name"`
 	Type         string  `json:"type"`
@@ -36,6 +37,7 @@ type UpdateSectionInput struct {
 	ColorHex     *string         `json:"color_hex"`
 }
 type SectionResponse struct {
+	FolderID     int64     `json:"expediente_folder_id"`
 	ID           int64     `json:"id"`
 	ExpedienteID int64     `json:"expediente_id"`
 	ParentID     *int64    `json:"expediente_section_parent_id"`
@@ -53,7 +55,7 @@ func sectionResponse(row models.ExpedienteSection) SectionResponse {
 	if row.DocumentDate != nil {
 		date = &Date{Time: *row.DocumentDate}
 	}
-	return SectionResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, ParentID: row.ExpedienteSectionParentID, Name: row.Name, Type: row.Type, DocumentDate: date, SortOrder: row.SortOrder, ColorHex: row.ColorHex, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return SectionResponse{FolderID: row.ExpedienteFolderID, ID: row.ID, ExpedienteID: row.ExpedienteID, ParentID: row.ExpedienteSectionParentID, Name: row.Name, Type: row.Type, DocumentDate: date, SortOrder: row.SortOrder, ColorHex: row.ColorHex, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 func sectionDBError(err error) error {
 	var pg *pgconn.PgError
@@ -111,6 +113,12 @@ func (s *DocumentService) CreateSection(ctx context.Context, expedienteID int64,
 		return SectionResponse{}, err
 	}
 	row.ExpedienteID = expedienteID
+	if input.FolderID != nil {
+		if *input.FolderID <= 0 {
+			return SectionResponse{}, ErrSectionInvalid
+		}
+		row.ExpedienteFolderID = *input.FolderID
+	}
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
@@ -118,7 +126,19 @@ func (s *DocumentService) CreateSection(ctx context.Context, expedienteID int64,
 		if err := validParent(tx, expedienteID, input.ParentID); err != nil {
 			return err
 		}
-		return tx.Create(&row).Error
+		if row.ExpedienteFolderID != 0 {
+			var count int64
+			if err := tx.Model(&models.ExpedienteFolder{}).Where("id = ? AND expediente_id = ?", row.ExpedienteFolderID, expedienteID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != 1 {
+				return ErrSectionInvalid
+			}
+		}
+		if err := tx.Clauses(clause.Returning{}).Create(&row).Error; err != nil {
+			return err
+		}
+		return nil
 	})
 	return sectionResponse(row), sectionDBError(err)
 }

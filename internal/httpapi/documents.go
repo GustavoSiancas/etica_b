@@ -9,6 +9,10 @@ import (
 )
 
 type DocumentAPI interface {
+	ListFolderTypes(context.Context) ([]services.FolderTypeResponse, error)
+	ListFolders(context.Context, int64) ([]services.FolderResponse, error)
+	CreateFolder(context.Context, int64, services.CreateFolderInput) (services.FolderResponse, error)
+	ListFolderSections(context.Context, int64, int64) ([]services.SectionResponse, error)
 	ListTypes(context.Context) ([]services.DocumentTypeEntry, error)
 	Create(context.Context, services.CreateDocumentInput) (services.DocumentResponse, error)
 	List(context.Context, int, int) (services.DocumentPage, error)
@@ -72,6 +76,31 @@ func documentPagination(r *http.Request) (int, int, bool) {
 	return values[0], values[1], values[0] >= 1 && values[0] <= 100 && values[1] >= 0
 }
 func registerDocuments(mux *http.ServeMux, service DocumentAPI) {
+	mux.HandleFunc("GET /folder-types", func(w http.ResponseWriter, r *http.Request) {
+		result, err := service.ListFolderTypes(r.Context())
+		documentResult(w, 200, result, err)
+	})
+	mux.HandleFunc("GET /expedientes/{expedienteID}/folders", documentRoute(func(w http.ResponseWriter, r *http.Request, e, _, _ int64) {
+		result, err := service.ListFolders(r.Context(), e)
+		documentResult(w, 200, result, err)
+	}))
+	mux.HandleFunc("POST /expedientes/{expedienteID}/folders", documentRoute(func(w http.ResponseWriter, r *http.Request, e, _, _ int64) {
+		var input services.CreateFolderInput
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := service.CreateFolder(r.Context(), e, input)
+		documentResult(w, 201, result, err)
+	}))
+	mux.HandleFunc("GET /expedientes/{expedienteID}/folders/{folderID}/sections", documentRoute(func(w http.ResponseWriter, r *http.Request, e, _, _ int64) {
+		folderID, err := strconv.ParseInt(r.PathValue("folderID"), 10, 64)
+		if err != nil || folderID <= 0 {
+			failure(w, services.ErrSectionInvalid)
+			return
+		}
+		result, err := service.ListFolderSections(r.Context(), e, folderID)
+		documentResult(w, 200, result, err)
+	}))
 	mux.HandleFunc("GET /document-types", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.ListTypes(r.Context())
 		documentResult(w, 200, result, err)

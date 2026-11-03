@@ -126,7 +126,8 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	if err := db.Exec("INSERT INTO expedientes(description) VALUES ('Missing opening date')").Error; err == nil {
 		t.Fatal("new expediente without opening date accepted")
 	}
-	if err := db.Exec("DELETE FROM expedientes; DELETE FROM expediente_year_counters").Error; err != nil {
+	verifyFolderMigration(t, ctx, db)
+	if err := db.Exec("DELETE FROM expediente_folders; DELETE FROM expedientes; DELETE FROM expediente_year_counters").Error; err != nil {
 		t.Fatal(err)
 	}
 	documents := services.NewDocumentService(db)
