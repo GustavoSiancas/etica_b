@@ -196,6 +196,89 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 	if err != nil || page.Total != 1 || len(page.Data) != 1 || page.Data[0].ID != 1 {
 		t.Fatalf("folder filters: %+v %v", page, err)
 	}
+	global, err := service.ListAllFolders(ctx, 100, 0, FolderFilters{})
+	if err != nil || global.Total != 4 || len(global.Data) != 4 {
+		t.Fatalf("global folders: %+v %v", global, err)
+	}
+	foundPrincipal, foundCustom := false, false
+	for i, folder := range global.Data {
+		if i > 0 && global.Data[i-1].CreatedAt.Before(folder.CreatedAt) {
+			t.Fatal("folders out of order")
+		}
+		if folder.ID == oldPrincipal.ID {
+			foundPrincipal = true
+			if folder.Denomination != folder.ExpedienteNumber+" EP" || folder.Status != FolderCerrado || folder.Location != UbicacionTribunal {
+				t.Fatalf("principal global identity: %+v", folder)
+			}
+		}
+		if folder.ID == customFolder.ID {
+			foundCustom = true
+			if folder.Denomination != folder.ExpedienteNumber+" EE" || folder.Status != FolderAbierto || folder.Location != UbicacionDireccion {
+				t.Fatalf("custom global identity: %+v", folder)
+			}
+		}
+	}
+	if !foundPrincipal || !foundCustom {
+		t.Fatal("global list missing folders")
+	}
+	seen := map[int64]bool{}
+	for _, offset := range []int{0, 2, 4} {
+		paged, err := service.ListAllFolders(ctx, 2, offset, FolderFilters{})
+		want := 2
+		if offset == 4 {
+			want = 0
+		}
+		if err != nil || paged.Total != 4 || len(paged.Data) != want || paged.Limit != 2 || paged.Offset != offset || paged.Data == nil {
+			t.Fatalf("folder pagination: %+v %v", paged, err)
+		}
+		for _, folder := range paged.Data {
+			if seen[folder.ID] {
+				t.Fatal("duplicate across folder pages")
+			}
+			seen[folder.ID] = true
+		}
+	}
+	principalType := oldPrincipal.FolderTypeID
+	expedienteID := int64(1)
+	filtered, err := service.ListAllFolders(ctx, 1, 0, FolderFilters{Status: FolderCerrado, Location: UbicacionTribunal, FolderTypeID: &principalType, ExpedienteID: &expedienteID, Q: " ep", From: "2026-11-04", To: "2026-11-04"})
+	if err != nil || filtered.Total != 1 || len(filtered.Data) != 1 || filtered.Data[0].ID != oldPrincipal.ID {
+		t.Fatalf("combined folder filters: %+v %v", filtered, err)
+	}
+	for _, filter := range []FolderFilters{{Q: "%"}, {Status: FolderCerrado, Q: custom.Name}, {Q: "no such folder"}, {FolderTypeID: &custom.ID, ExpedienteID: &otherExpediente.ID}} {
+		result, err := service.ListAllFolders(ctx, 20, 0, filter)
+		if err != nil || result.Total != 0 || result.Data == nil || len(result.Data) != 0 {
+			t.Fatalf("empty folder filter %+v: %+v %v", filter, result, err)
+		}
+	}
+	// Date bounds use the full Peruvian calendar day, not the UTC calendar day.
+	for _, tc := range []struct {
+		instant string
+		want    int64
+	}{
+		{"2026-11-04T04:59:59Z", 0}, {"2026-11-04T05:00:00Z", 1},
+		{"2026-11-05T04:59:59Z", 1}, {"2026-11-05T05:00:00Z", 0},
+	} {
+		if err := db.Model(&models.ExpedienteFolder{}).Where("id = ?", customFolder.ID).Update("opening_date", tc.instant).Error; err != nil {
+			t.Fatal(err)
+		}
+		result, err := service.ListAllFolders(ctx, 20, 0, FolderFilters{FolderTypeID: &custom.ID, From: "2026-11-04", To: "2026-11-04"})
+		if err != nil || result.Total != tc.want {
+			t.Fatalf("Peru day boundary %s: %+v %v", tc.instant, result, err)
+		}
+	}
+	// Legacy types without abbreviations still have an unambiguous label.
+	if err := db.Model(&models.FolderType{}).Where("id = ?", custom.ID).Update("abbreviation", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	global, err = service.ListAllFolders(ctx, 100, 0, FolderFilters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range global.Data {
+		if folder.ID == customFolder.ID && folder.Denomination != folder.ExpedienteNumber+" "+custom.Name {
+			t.Fatalf("legacy designation: %+v", folder)
+		}
+	}
 	// Status and location must come from one folder, not different siblings.
 	page, err = NewExpedienteService(db).List(ctx, 20, 0, ExpedienteFilters{Status: FolderCerrado, Location: UbicacionDireccion})
 	if err != nil || page.Total != 0 {

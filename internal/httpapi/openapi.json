@@ -1623,6 +1623,137 @@
         }
       }
     },
+    "/folders": {
+      "get": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Listar todas las carpetas",
+        "description": "Listado paginado de carpetas ordenado por creacion descendente e ID descendente. Los filtros se combinan con AND. q busca texto literal sin distinguir mayusculas en denominacion o nombre. from/to filtran opening_date de la carpeta por dia completo en Peru (UTC-05:00). total cuenta coincidencias antes de paginar; sin resultados data es [].",
+        "responses": {
+          "200": {
+            "description": "Carpetas de todos los expedientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderPage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Tamano de pagina."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Registros a omitir."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ABIERTO",
+                "CERRADO"
+              ]
+            },
+            "description": "Estado actual de la carpeta."
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DIRECCION DE ETICA",
+                "CONSEJO DE ETICA",
+                "TRIBUNAL DE HONOR"
+              ]
+            },
+            "description": "Ubicacion actual de la carpeta."
+          },
+          {
+            "name": "folder_type_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Tipo de carpeta."
+          },
+          {
+            "name": "expediente_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Expediente propietario."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "description": "Busqueda parcial literal por denominacion (numero + siglas) o nombre de tipo."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Primer dia de apertura de carpeta, inclusivo en Peru."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Ultimo dia de apertura de carpeta, inclusivo en Peru."
+          }
+        ]
+      }
+    },
     "/folder-types": {
       "get": {
         "tags": [
@@ -2663,6 +2794,57 @@
             "description": "Carpeta del mismo expediente. Al crear, si se omite hereda la del padre o usa EXPEDIENTE PRINCIPAL."
           }
         }
+      },
+      "FolderPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GlobalFolder"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      },
+      "GlobalFolder": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Folder"
+          },
+          {
+            "type": "object",
+            "required": [
+              "expediente_number",
+              "denomination"
+            ],
+            "properties": {
+              "expediente_number": {
+                "type": "string",
+                "example": "1-2026"
+              },
+              "denomination": {
+                "type": "string",
+                "example": "1-2026 EP"
+              }
+            }
+          }
+        ]
       },
       "FolderType": {
         "type": "object",

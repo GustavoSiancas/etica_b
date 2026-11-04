@@ -307,3 +307,91 @@ func (s *DocumentService) ListLocations(context.Context) ([]FolderLocationRespon
 func (s *DocumentService) ListStatuses(context.Context) ([]FolderStatusResponse, error) {
 	return append([]FolderStatusResponse(nil), folderStatuses...), nil
 }
+
+// GlobalFolderResponse identifies each folder using its expediente and folder type.
+type GlobalFolderResponse struct {
+	FolderResponse
+	ExpedienteNumber string `json:"expediente_number"`
+	Denomination     string `json:"denomination"`
+}
+
+type FolderFilters struct {
+	Status       string
+	Location     string
+	FolderTypeID *int64
+	ExpedienteID *int64
+	Q            string
+	From         string
+	To           string
+}
+
+type FolderPage struct {
+	Data   []GlobalFolderResponse `json:"data"`
+	Total  int64                  `json:"total"`
+	Limit  int                    `json:"limit"`
+	Offset int                    `json:"offset"`
+}
+
+func ValidFolderFilters(f FolderFilters) bool {
+	if (f.Status != "" && !validFolderStatus(f.Status)) || (f.Location != "" && !validLocation(f.Location)) ||
+		(f.FolderTypeID != nil && *f.FolderTypeID <= 0) || (f.ExpedienteID != nil && *f.ExpedienteID <= 0) ||
+		!utf8.ValidString(f.Q) || strings.ContainsRune(f.Q, 0) || utf8.RuneCountInString(f.Q) > 255 {
+		return false
+	}
+	return ValidExpedienteFilters(ExpedienteFilters{From: f.From, To: f.To})
+}
+
+func (s *DocumentService) ListAllFolders(ctx context.Context, limit, offset int, filters FolderFilters) (FolderPage, error) {
+	page := FolderPage{Data: []GlobalFolderResponse{}, Limit: limit, Offset: offset}
+	if limit < 1 || limit > 100 || offset < 0 || !ValidFolderFilters(filters) {
+		return page, ErrFolderInvalid
+	}
+	query := s.db.WithContext(ctx).Table("expediente_folders f").
+		Joins("JOIN folder_types t ON t.id=f.folder_type_id").
+		Joins("JOIN expedientes e ON e.id=f.expediente_id")
+	if filters.Status != "" {
+		query = query.Where("f.status = ?", filters.Status)
+	}
+	if filters.Location != "" {
+		query = query.Where("f.location = ?", filters.Location)
+	}
+	if filters.FolderTypeID != nil {
+		query = query.Where("f.folder_type_id = ?", *filters.FolderTypeID)
+	}
+	if filters.ExpedienteID != nil {
+		query = query.Where("f.expediente_id = ?", *filters.ExpedienteID)
+	}
+	if value := strings.TrimSpace(filters.Q); value != "" {
+		// strpos treats user % and _ literally, rather than as SQL wildcards.
+		query = query.Where("(strpos(lower(e.number || ' ' || coalesce(nullif(btrim(t.abbreviation), ''), t.name)), lower(?)) > 0 OR strpos(lower(t.name), lower(?)) > 0)", value, value)
+	}
+	peru := time.FixedZone("America/Lima", -5*60*60)
+	if filters.From != "" {
+		from, _ := time.ParseInLocation("2006-01-02", filters.From, peru)
+		query = query.Where("f.opening_date >= ?", from.UTC())
+	}
+	if filters.To != "" {
+		to, _ := time.ParseInLocation("2006-01-02", filters.To, peru)
+		query = query.Where("f.opening_date < ?", to.AddDate(0, 0, 1).UTC())
+	}
+	if err := query.Count(&page.Total).Error; err != nil {
+		return page, err
+	}
+	err := query.Select("f.*, t.name, t.abbreviation, e.number AS expediente_number").
+		Order("f.created_at DESC, f.id DESC").Limit(limit).Offset(offset).Scan(&page.Data).Error
+	if err != nil {
+		return page, err
+	}
+	for i := range page.Data {
+		row := &page.Data[i]
+		suffix := row.Name
+		if row.Abbreviation != nil && strings.TrimSpace(*row.Abbreviation) != "" {
+			suffix = *row.Abbreviation
+		}
+		row.Denomination = row.ExpedienteNumber + " " + suffix
+		row.OpeningDate = utcFolderDate(row.OpeningDate)
+		row.CreatedAt = row.CreatedAt.UTC()
+		row.UpdatedAt = row.UpdatedAt.UTC()
+	}
+	return page, nil
+}

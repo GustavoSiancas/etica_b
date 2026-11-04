@@ -9,6 +9,7 @@ import (
 )
 
 type DocumentAPI interface {
+	ListAllFolders(context.Context, int, int, services.FolderFilters) (services.FolderPage, error)
 	ListLocations(context.Context) ([]services.FolderLocationResponse, error)
 	ListStatuses(context.Context) ([]services.FolderStatusResponse, error)
 	UpdateFolderStatus(context.Context, int64, int64, services.UpdateFolderStatusInput) (services.FolderResponse, error)
@@ -81,6 +82,20 @@ func documentPagination(r *http.Request) (int, int, bool) {
 	return values[0], values[1], values[0] >= 1 && values[0] <= 100 && values[1] >= 0
 }
 func registerDocuments(mux *http.ServeMux, service DocumentAPI) {
+	mux.HandleFunc("GET /folders", func(w http.ResponseWriter, r *http.Request) {
+		limit, offset, ok := documentPagination(r)
+		if !ok {
+			failure(w, services.ErrFolderInvalid)
+			return
+		}
+		filters, err := folderFilters(r)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		result, err := service.ListAllFolders(r.Context(), limit, offset, filters)
+		documentResult(w, 200, result, err)
+	})
 	mux.HandleFunc("GET /folder-types", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.ListFolderTypes(r.Context())
 		documentResult(w, 200, result, err)
@@ -192,4 +207,33 @@ func registerDocuments(mux *http.ServeMux, service DocumentAPI) {
 	mux.HandleFunc("DELETE "+sectionPath+"/documents/{documentID}", documentRoute(func(w http.ResponseWriter, r *http.Request, e, s, d int64) {
 		documentResult(w, 204, nil, service.DetachDocument(r.Context(), e, s, d))
 	}))
+}
+
+func folderFilters(r *http.Request) (services.FolderFilters, error) {
+	filters := services.FolderFilters{}
+	query := r.URL.Query()
+	for key, target := range map[string]*string{"status": &filters.Status, "location": &filters.Location, "q": &filters.Q, "from": &filters.From, "to": &filters.To} {
+		if values, ok := query[key]; ok {
+			if len(values) != 1 {
+				return filters, services.ErrFolderInvalid
+			}
+			*target = values[0]
+		}
+	}
+	for key, target := range map[string]**int64{"folder_type_id": &filters.FolderTypeID, "expediente_id": &filters.ExpedienteID} {
+		if values, ok := query[key]; ok {
+			if len(values) != 1 {
+				return filters, services.ErrFolderInvalid
+			}
+			value, err := strconv.ParseInt(values[0], 10, 64)
+			if err != nil || value <= 0 {
+				return filters, services.ErrFolderInvalid
+			}
+			*target = &value
+		}
+	}
+	if !services.ValidFolderFilters(filters) {
+		return filters, services.ErrFolderInvalid
+	}
+	return filters, nil
 }

@@ -162,3 +162,30 @@ La migracion `008_folder_state_location.up.sql` mueve `status` y `location` del 
 El POST y el GET de carpetas devuelven ambos campos. Crear un tipo que ya existe en el expediente conserva su carpeta, fecha, estado y ubicacion.
 
 Los cambios se realizan mediante `PATCH /expedientes/{expedienteID}/folders/{folderID}/status` y `/location`. Los catalogos estan en `GET /folder-statuses` y `GET /folder-locations`. Ver [reglas de cierre y filtros](expedientes.md).
+
+## Listado global de carpetas
+
+`GET /folders?limit=20&offset=0` devuelve `{data,total,limit,offset}` con carpetas de todos los expedientes, ordenadas por creacion descendente e ID descendente. `limit` admite 1 a 100 (defecto 20) y `offset` desde cero (defecto 0). `total` cuenta las coincidencias antes de paginar; sin resultados o con offset fuera de rango devuelve `data: []` y conserva el total filtrado.
+
+Filtros opcionales, combinados con AND:
+
+| Parametro | Uso |
+| --- | --- |
+| `status` | `ABIERTO` o `CERRADO` |
+| `location` | `DIRECCION DE ETICA`, `CONSEJO DE ETICA`, `TRIBUNAL DE HONOR` |
+| `folder_type_id` | ID positivo del tipo de carpeta |
+| `expediente_id` | ID positivo del expediente |
+| `q` | Texto parcial por numero + siglas o nombre del tipo; hasta 255 caracteres, sin distinguir mayusculas; `%` y `_` son literales |
+| `from` | Apertura de carpeta desde este dia, `YYYY-MM-DD` |
+| `to` | Apertura de carpeta hasta este dia, `YYYY-MM-DD` |
+
+`from` y `to` incluyen el dia completo en hora peruana (UTC-05:00); se puede enviar solo uno. Los registros sin apertura quedan excluidos al filtrar por fecha. Valores invalidos, rangos invertidos o parametros reconocidos repetidos devuelven 400.
+
+Ejemplo: `GET /folders?limit=10&offset=0&status=ABIERTO&folder_type_id=2&q=MC&from=2026-11-01&to=2026-11-30`.
+
+Cada elemento incluye los campos habituales de carpeta (ID, expediente, tipo, nombre, siglas, fecha de apertura, estado, ubicacion y auditoria), ademas de:
+
+- `expediente_number`: por ejemplo `1-2026`.
+- `denomination`: numero de expediente + espacio + siglas, por ejemplo `1-2026 EP` o `1-2026 MC`.
+
+`status` y `location` son los valores actuales de cada carpeta. Si un tipo antiguo no tiene siglas, la denominacion usa su nombre en su lugar. Los timestamps siguen devolviendose en UTC. Este endpoint no requiere migracion.
