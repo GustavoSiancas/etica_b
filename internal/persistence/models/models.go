@@ -38,7 +38,8 @@ type FolderType struct {
 func (FolderType) TableName() string { return "folder_types" }
 
 type ExpedienteFolder struct {
-	ID           int64 `gorm:"primaryKey;autoIncrement"`
+	OpeningDate  *time.Time `gorm:"type:timestamptz"`
+	ID           int64      `gorm:"primaryKey;autoIncrement"`
 	ExpedienteID int64
 	FolderTypeID int64
 	Audit

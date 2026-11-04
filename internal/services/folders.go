@@ -14,15 +14,17 @@ type FolderTypeResponse struct {
 	Name string `json:"name"`
 }
 type FolderResponse struct {
-	ID           int64     `json:"id"`
-	ExpedienteID int64     `json:"expediente_id"`
-	FolderTypeID int64     `json:"folder_type_id"`
-	Name         string    `json:"name"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	OpeningDate  *time.Time `json:"opening_date"`
+	ID           int64      `json:"id"`
+	ExpedienteID int64      `json:"expediente_id"`
+	FolderTypeID int64      `json:"folder_type_id"`
+	Name         string     `json:"name"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 type CreateFolderInput struct {
-	FolderTypeID int64 `json:"folder_type_id"`
+	FolderTypeID int64         `json:"folder_type_id"`
+	OpeningDate  *DocumentDate `json:"opening_date"`
 }
 
 func (s *DocumentService) ListFolderTypes(ctx context.Context) ([]FolderTypeResponse, error) {
@@ -41,6 +43,7 @@ func (s *DocumentService) ListFolders(ctx context.Context, expedienteID int64) (
 	rows := []FolderResponse{}
 	err := db.Table("expediente_folders f").Select("f.*, t.name").Joins("JOIN folder_types t ON t.id=f.folder_type_id").Where("f.expediente_id = ?", expedienteID).Order("f.id").Scan(&rows).Error
 	for i := range rows {
+		rows[i].OpeningDate = utcFolderDate(rows[i].OpeningDate)
 		rows[i].CreatedAt = rows[i].CreatedAt.UTC()
 		rows[i].UpdatedAt = rows[i].UpdatedAt.UTC()
 	}
@@ -64,13 +67,40 @@ func (s *DocumentService) CreateFolder(ctx context.Context, expedienteID int64, 
 			}
 			return err
 		}
-		row = models.ExpedienteFolder{ExpedienteID: expedienteID, FolderTypeID: input.FolderTypeID}
+		// Preserve idempotency: an existing folder keeps its original opening date.
+		err := tx.Where("expediente_id = ? AND folder_type_id = ?", expedienteID, input.FolderTypeID).First(&row).Error
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var openingDate *time.Time
+		if kind.Name == "EXPEDIENTE PRINCIPAL" {
+			var expediente models.Expediente
+			if err := tx.First(&expediente, expedienteID).Error; err != nil {
+				return err
+			}
+			if expediente.OpeningDate != nil {
+				date, err := time.ParseInLocation("2006-01-02", expediente.OpeningDate.Format("2006-01-02"), time.FixedZone("America/Lima", -5*60*60))
+				if err != nil {
+					return err
+				}
+				openingDate = utcFolderDate(&date)
+			}
+		} else {
+			if input.OpeningDate == nil {
+				return ErrSectionInvalid
+			}
+			openingDate = utcFolderDate(&input.OpeningDate.Time)
+		}
+		row = models.ExpedienteFolder{ExpedienteID: expedienteID, FolderTypeID: input.FolderTypeID, OpeningDate: openingDate}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
 		}
 		return tx.Where("expediente_id = ? AND folder_type_id = ?", expedienteID, input.FolderTypeID).First(&row).Error
 	})
-	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
+	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
 }
 func (s *DocumentService) ListFolderSections(ctx context.Context, expedienteID, folderID int64) ([]SectionResponse, error) {
 	if expedienteID <= 0 || folderID <= 0 {
@@ -94,4 +124,12 @@ func (s *DocumentService) ListFolderSections(ctx context.Context, expedienteID, 
 		result = append(result, sectionResponse(row))
 	}
 	return result, err
+}
+
+func utcFolderDate(date *time.Time) *time.Time {
+	if date == nil {
+		return nil
+	}
+	value := date.UTC()
+	return &value
 }

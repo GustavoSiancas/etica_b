@@ -97,3 +97,20 @@ Se retiraron `/escritos` y todas sus rutas, `/document-stages` y `POST /expedien
 Los IDs inválidos devuelven 400; expedientes, secciones, documentos o vínculos inexistentes devuelven 404. Las rutas de sección verifican siempre que la sección pertenezca al expediente indicado.
 
 Si el expediente está `CERRADO`, las mutaciones de secciones y vínculos devuelven 409. Los documentos y sus cargas también devuelven 409 si cualquiera de sus expedientes está cerrado. Las consultas siguen disponibles; reabrir mediante `PATCH /expedientes/{id}/status` permite volver a ingresar información. Ver [estado y ubicación](expedientes.md).
+
+## Fecha de apertura de carpetas
+
+La migracion `006_folder_opening_date.up.sql` agrega `opening_date` (`TIMESTAMPTZ`) a las carpetas y se ejecuta al iniciar el backend.
+
+- La carpeta `EXPEDIENTE PRINCIPAL` se crea automaticamente con la fecha de apertura del expediente, interpretada a las 00:00 de Peru. Si el expediente no tiene fecha, la carpeta conserva `null`.
+- Las nuevas carpetas adicionales requieren su propia `opening_date`.
+- Las carpetas adicionales existentes reciben su `created_at` como fecha inicial en la migracion.
+- Crear un tipo de carpeta que ya existe devuelve la misma carpeta y conserva su fecha.
+
+`POST /expedientes/{expedienteID}/folders`:
+
+```json
+{"folder_type_id":2,"opening_date":"2026-11-04"}
+```
+
+Tambien admite `"opening_date":"2026-11-04T14:30:00-05:00"`. La respuesta y `GET /expedientes/{expedienteID}/folders` incluyen `opening_date` en UTC: `2026-11-04T05:00:00Z` para el primer ejemplo. Las horas sin zona se rechazan con 400. La fecha de la carpeta principal se copia al crearla; posteriores cambios al expediente no modifican esa copia.
