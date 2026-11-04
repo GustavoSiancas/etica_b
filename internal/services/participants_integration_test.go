@@ -332,6 +332,38 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 			t.Fatalf("document search regressed: %s %v", role, err)
 		}
 	}
+	// A first name and surname match even when a middle name separates them.
+	for _, name := range []string{"__Tokens__ EDWIN JESUS LUNA YURIVILCA", "__Tokens__ Edwin Alberto Luna", "__Tokens__ Edwin Jesus Sol", "__Tokens__ Juan Jesus Luna"} {
+		if err := db.Exec("INSERT INTO denunciantes(name,document_type,document_number) VALUES (?,'DNI','88000888')", name).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("INSERT INTO denunciados(name,document_type,document_number,registration_number) VALUES (?,'DNI','88000888',99900888)", name).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, term := range []string{"edwin luna", "LUNA EDWIN", "  edwin   luna  ", "edwin\tluna", "\u00c9DWIN L\u00daNA"} {
+		for _, filter := range []ParticipantFilters{{Q: term, DocumentNumber: "88000888"}, {Name: term, DocumentNumber: "88000888"}} {
+			for _, role := range []string{"denunciante", "denunciado"} {
+				list := participants.ListDenunciantes
+				if role == "denunciado" {
+					list = participants.ListDenunciados
+				}
+				for _, offset := range []int{0, 1, 2} {
+					rows, total, err := list(ctx, 1, offset, filter)
+					want := 1
+					if offset == 2 {
+						want = 0
+					}
+					if err != nil || total != 2 || len(rows) != want {
+						t.Fatalf("separated-name %s %q offset %d: total=%d rows=%d err=%v", role, term, offset, total, len(rows), err)
+					}
+					if len(rows) > 0 && (!strings.Contains(strings.ToLower(rows[0].Name), "edwin") || !strings.Contains(strings.ToLower(rows[0].Name), "luna")) {
+						t.Fatal("not all name terms matched")
+					}
+				}
+			}
+		}
+	}
 	// Participant-scoped lists combine membership, state/location and paging.
 	scopedComplainant, err := participants.CreateDenunciante(ctx, CreateDenuncianteInput{Name: "Scoped complainant", DocumentType: "DNI", DocumentNumber: "88000001"})
 	if err != nil {

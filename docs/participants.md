@@ -90,3 +90,5 @@ GET /denunciados?registration_number=12345
 Respuesta: `{"data":[],"total":0,"limit":20,"offset":0}`. `total` cuenta las coincidencias antes de paginar. El orden es ID ascendente; sin coincidencias, data es un arreglo vacio. Los GET por expediente conservan su listado completo de asociaciones sin paginacion.
 
 La normalizacion de nombres tambien admite letras como `?`, `?` y `?`: `alvaro` encuentra `?LVARO` y viceversa. Se comparan tanto letras compuestas como sus equivalentes Unicode descompuestos. La coincidencia puede estar al inicio, en medio o al final: `?name=carlos` encuentra `Juan Carlos Perez`, y `?name=lva` encuentra `Alvaro`. Se conserva el nombre original en las respuestas. No requiere migracion.
+
+Las busquedas por `q` y `name` comparan cada palabra por separado: todas deben aparecer en el mismo nombre, en cualquier orden y aunque haya nombres intermedios. `?q=edwin%20luna` y `?name=luna%20edwin` encuentran `EDWIN JESUS LUNA YURIVILCA`. Espacios repetidos se ignoran. La busqueda de documento y colegiatura con `q` conserva la coincidencia parcial del texto completo.

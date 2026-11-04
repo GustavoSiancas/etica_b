@@ -221,7 +221,7 @@
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Busqueda parcial por nombre o numero de documento. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original.",
+            "description": "Busqueda parcial por nombre o numero de documento. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original. Todas las palabras deben aparecer en el mismo nombre, en cualquier orden y con nombres intermedios permitidos: edwin luna encuentra EDWIN JESUS LUNA YURIVILCA.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -231,7 +231,7 @@
             "name": "name",
             "in": "query",
             "required": false,
-            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original.",
+            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original. Todas las palabras deben aparecer en el mismo nombre, en cualquier orden y con nombres intermedios permitidos: edwin luna encuentra EDWIN JESUS LUNA YURIVILCA.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -349,7 +349,7 @@
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Busqueda parcial por nombre o numero de documento o colegiatura. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original.",
+            "description": "Busqueda parcial por nombre o numero de documento o colegiatura. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original. Todas las palabras deben aparecer en el mismo nombre, en cualquier orden y con nombres intermedios permitidos: edwin luna encuentra EDWIN JESUS LUNA YURIVILCA.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -359,7 +359,7 @@
             "name": "name",
             "in": "query",
             "required": false,
-            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original.",
+            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original. Todas las palabras deben aparecer en el mismo nombre, en cualquier orden y con nombres intermedios permitidos: edwin luna encuentra EDWIN JESUS LUNA YURIVILCA.",
             "schema": {
               "type": "string",
               "maxLength": 255

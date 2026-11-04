@@ -101,6 +101,18 @@ const participantNameMatch = `strpos(
     lower(regexp_replace(normalize(?, NFD), U&'[\0300-\036f]', '', 'g'))
 ) > 0`
 
+// Every typed word must occur in the same name, regardless of order or gaps.
+func participantNameTerms(value string) (string, []any) {
+	terms := strings.Fields(value)
+	conditions := make([]string, 0, len(terms))
+	args := make([]any, 0, len(terms))
+	for _, term := range terms {
+		conditions = append(conditions, participantNameMatch)
+		args = append(args, term)
+	}
+	return "(" + strings.Join(conditions, " AND ") + ")", args
+}
+
 func participantFilterQuery(db *gorm.DB, filters ParticipantFilters, denunciado bool) (*gorm.DB, error) {
 	filters.Q = strings.TrimSpace(filters.Q)
 	filters.Name = strings.TrimSpace(filters.Name)
@@ -121,16 +133,18 @@ func participantFilterQuery(db *gorm.DB, filters ParticipantFilters, denunciado 
 		return nil, ErrParticipantInvalid
 	}
 	if filters.Q != "" {
-		condition := "(" + participantNameMatch + " OR strpos(document_number, ?) > 0)"
-		args := []any{filters.Q, filters.Q}
+		nameCondition, args := participantNameTerms(filters.Q)
+		condition := "(" + nameCondition + " OR strpos(document_number, ?) > 0"
+		args = append(args, filters.Q)
 		if denunciado {
-			condition = "(" + participantNameMatch + " OR strpos(document_number, ?) > 0 OR strpos(registration_number::text, ?) > 0)"
+			condition += " OR strpos(registration_number::text, ?) > 0"
 			args = append(args, filters.Q)
 		}
-		db = db.Where(condition, args...)
+		db = db.Where(condition+")", args...)
 	}
 	if filters.Name != "" {
-		db = db.Where(participantNameMatch, filters.Name)
+		condition, args := participantNameTerms(filters.Name)
+		db = db.Where(condition, args...)
 	}
 	if filters.DocumentType != "" {
 		db = db.Where("document_type = ?", filters.DocumentType)
