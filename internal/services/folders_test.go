@@ -33,3 +33,17 @@ func TestCreateFolderTypeValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderAbbreviationValidation(t *testing.T) {
+	for _, value := range []string{"", "  ", "A B", "A-B", "A\x00B", strings.Repeat("a", 21), string([]byte{0xff})} {
+		if _, err := NewDocumentService(nil).CreateFolderType(context.Background(), CreateFolderTypeInput{Name: "Valid name", Abbreviation: value}); !errors.Is(err, ErrFolderTypeInvalid) {
+			t.Fatalf("invalid abbreviation accepted: %q %v", value, err)
+		}
+	}
+	for _, tc := range []struct{ input, want string }{{" ep ", "EP"}, {"mc", "MC"}, {"Ee2", "EE2"}} {
+		got, err := normalizeFolderAbbreviation(tc.input)
+		if err != nil || got != tc.want {
+			t.Fatalf("normalization %q: %q %v", tc.input, got, err)
+		}
+	}
+}

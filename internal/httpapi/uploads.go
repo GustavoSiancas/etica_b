@@ -138,7 +138,7 @@ func failure(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, services.ErrFolderTypeInvalid):
 		status = 400
-		message = "folder type name must contain 1 to 255 characters"
+		message = "folder type requires a name of 1 to 255 characters and an abbreviation of 1 to 20 letters or digits"
 	case errors.Is(err, services.ErrFolderTypeDuplicate):
 		status = 409
 		message = "folder type already exists"

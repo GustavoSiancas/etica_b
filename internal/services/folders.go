@@ -9,14 +9,17 @@ import (
 	"gorm.io/gorm/clause"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 type FolderTypeResponse struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	Abbreviation *string `json:"abbreviation"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
 }
 type FolderResponse struct {
+	Abbreviation *string    `json:"abbreviation"`
 	OpeningDate  *time.Time `json:"opening_date"`
 	ID           int64      `json:"id"`
 	ExpedienteID int64      `json:"expediente_id"`
@@ -44,7 +47,7 @@ func (s *DocumentService) ListFolders(ctx context.Context, expedienteID int64) (
 		return nil, err
 	}
 	rows := []FolderResponse{}
-	err := db.Table("expediente_folders f").Select("f.*, t.name").Joins("JOIN folder_types t ON t.id=f.folder_type_id").Where("f.expediente_id = ?", expedienteID).Order("f.id").Scan(&rows).Error
+	err := db.Table("expediente_folders f").Select("f.*, t.name, t.abbreviation").Joins("JOIN folder_types t ON t.id=f.folder_type_id").Where("f.expediente_id = ?", expedienteID).Order("f.id").Scan(&rows).Error
 	for i := range rows {
 		rows[i].OpeningDate = utcFolderDate(rows[i].OpeningDate)
 		rows[i].CreatedAt = rows[i].CreatedAt.UTC()
@@ -103,7 +106,7 @@ func (s *DocumentService) CreateFolder(ctx context.Context, expedienteID int64, 
 		}
 		return tx.Where("expediente_id = ? AND folder_type_id = ?", expedienteID, input.FolderTypeID).First(&row).Error
 	})
-	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
+	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
 }
 func (s *DocumentService) ListFolderSections(ctx context.Context, expedienteID, folderID int64) ([]SectionResponse, error) {
 	if expedienteID <= 0 || folderID <= 0 {
@@ -137,11 +140,12 @@ func utcFolderDate(date *time.Time) *time.Time {
 	return &value
 }
 
-var ErrFolderTypeInvalid = errors.New("invalid folder type name")
+var ErrFolderTypeInvalid = errors.New("invalid folder type name or abbreviation")
 var ErrFolderTypeDuplicate = errors.New("folder type already exists")
 
 type CreateFolderTypeInput struct {
-	Name string `json:"name"`
+	Abbreviation string `json:"abbreviation"`
+	Name         string `json:"name"`
 }
 
 func (s *DocumentService) CreateFolderType(ctx context.Context, input CreateFolderTypeInput) (FolderTypeResponse, error) {
@@ -149,7 +153,11 @@ func (s *DocumentService) CreateFolderType(ctx context.Context, input CreateFold
 	if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, 0) || utf8.RuneCountInString(name) > 255 {
 		return FolderTypeResponse{}, ErrFolderTypeInvalid
 	}
-	row := models.FolderType{Name: strings.ToUpper(name)}
+	abbreviation, err := normalizeFolderAbbreviation(input.Abbreviation)
+	if err != nil {
+		return FolderTypeResponse{}, err
+	}
+	row := models.FolderType{Name: strings.ToUpper(name), Abbreviation: &abbreviation}
 	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -157,5 +165,18 @@ func (s *DocumentService) CreateFolderType(ctx context.Context, input CreateFold
 		}
 		return FolderTypeResponse{}, err
 	}
-	return FolderTypeResponse{ID: row.ID, Name: row.Name}, nil
+	return FolderTypeResponse{ID: row.ID, Name: row.Name, Abbreviation: row.Abbreviation}, nil
+}
+
+func normalizeFolderAbbreviation(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > 20 {
+		return "", ErrFolderTypeInvalid
+	}
+	for _, r := range value {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return "", ErrFolderTypeInvalid
+		}
+	}
+	return strings.ToUpper(value), nil
 }

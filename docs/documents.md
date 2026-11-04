@@ -120,13 +120,13 @@ Tambien admite `"opening_date":"2026-11-04T14:30:00-05:00"`. La respuesta y `GET
 `POST /folder-types` permite crear un tipo reutilizable en el catalogo. Por ahora es un endpoint abierto, sin autenticacion ni verificacion de administrador; la autorizacion se incorporara posteriormente.
 
 ```json
-{"name":"Expediente especial"}
+{"name":"Expediente especial","abbreviation":"EE"}
 ```
 
 Respuesta 201:
 
 ```json
-{"id":3,"name":"EXPEDIENTE ESPECIAL"}
+{"id":3,"name":"EXPEDIENTE ESPECIAL","abbreviation":"EE"}
 ```
 
 `name` es obligatorio, de 1 a 255 caracteres; se recortan espacios externos y se normaliza a mayusculas. Nombres vacios o invalidos y campos desconocidos devuelven 400. Un nombre ya existente devuelve 409. `GET /folder-types` incluye los tipos creados.
@@ -138,3 +138,13 @@ Para crear una carpeta con ese tipo, enviar a `POST /expedientes/{expedienteID}/
 ```
 
 Crear el tipo no crea carpetas automaticamente en los expedientes. No requiere una nueva migracion.
+
+## Siglas de tipos de carpeta
+
+La migracion `007_folder_type_abbreviation.up.sql` se aplica al arrancar y asigna automaticamente `EP` a `EXPEDIENTE PRINCIPAL` y `MC` a `EXPEDIENTE CAUTELAR`, sin cambiar sus IDs ni las carpetas vinculadas.
+
+`POST /folder-types` requiere `name` y `abbreviation`. Las siglas admiten entre 1 y 20 letras o digitos; se recortan espacios externos y se normalizan a mayusculas. Omitirlas o enviar null, espacios internos o signos devuelve 400.
+
+`GET /folder-types`, `POST /folder-types`, `GET /expedientes/{expedienteID}/folders` y `POST /expedientes/{expedienteID}/folders` devuelven `abbreviation`. Crear una carpeta sigue recibiendo `folder_type_id` y `opening_date`: las siglas se obtienen del tipo seleccionado.
+
+Los tipos personalizados existentes conservan `abbreviation: null`, porque no se conocen sus siglas. Las siglas de tipos nuevos se indican explicitamente al crearlos.

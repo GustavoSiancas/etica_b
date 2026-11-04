@@ -19,7 +19,7 @@ type fakeFolderTypes struct {
 func (f *fakeFolderTypes) CreateFolderType(_ context.Context, input services.CreateFolderTypeInput) (services.FolderTypeResponse, error) {
 	f.input = input
 	f.called = true
-	return services.FolderTypeResponse{ID: 3, Name: "EXPEDIENTE ESPECIAL"}, f.err
+	return services.FolderTypeResponse{ID: 3, Name: "EXPEDIENTE ESPECIAL", Abbreviation: &input.Abbreviation}, f.err
 }
 
 func TestCreateFolderTypeHTTP(t *testing.T) {
@@ -29,7 +29,7 @@ func TestCreateFolderTypeHTTP(t *testing.T) {
 		status int
 		called bool
 	}{
-		{`{"name":"Expediente especial"}`, nil, 201, true},
+		{`{"name":"Expediente especial","abbreviation":"EE"}`, nil, 201, true},
 		{`{"name":""}`, services.ErrFolderTypeInvalid, 400, true},
 		{`{}`, services.ErrFolderTypeInvalid, 400, true},
 		{`{"name":null}`, services.ErrFolderTypeInvalid, 400, true},
@@ -46,8 +46,22 @@ func TestCreateFolderTypeHTTP(t *testing.T) {
 		if w.Code != tc.status || fake.called != tc.called || strings.Contains(w.Body.String(), "private database details") {
 			t.Fatalf("body %s got %d called %v: %s", tc.body, w.Code, fake.called, w.Body.String())
 		}
-		if tc.status == 201 && (fake.input.Name != "Expediente especial" || !strings.Contains(w.Body.String(), `"id":3`)) {
+		if tc.status == 201 && (fake.input.Name != "Expediente especial" || fake.input.Abbreviation != "EE" || !strings.Contains(w.Body.String(), `"abbreviation":"EE"`) || !strings.Contains(w.Body.String(), `"id":3`)) {
 			t.Fatal("input or created type not returned")
 		}
+	}
+}
+
+func (f *fakeFolderTypes) ListFolderTypes(context.Context) ([]services.FolderTypeResponse, error) {
+	ep, mc := "EP", "MC"
+	return []services.FolderTypeResponse{{ID: 1, Name: "EXPEDIENTE PRINCIPAL", Abbreviation: &ep}, {ID: 2, Name: "EXPEDIENTE CAUTELAR", Abbreviation: &mc}}, f.err
+}
+
+func TestFolderTypeAbbreviationsHTTP(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeFolderTypes{}, &fakeParticipants{})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/folder-types", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"abbreviation":"EP"`) || !strings.Contains(w.Body.String(), `"abbreviation":"MC"`) {
+		t.Fatalf("catalogue abbreviations missing: %d %s", w.Code, w.Body.String())
 	}
 }

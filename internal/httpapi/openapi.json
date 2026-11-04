@@ -1818,7 +1818,7 @@
           "Documentos"
         ],
         "summary": "Crear tipo de carpeta",
-        "description": "Abierto temporalmente, sin autenticacion ni roles. Normaliza el nombre a mayusculas y recorta espacios externos. El ID devuelto puede enviarse como folder_type_id al crear carpetas.",
+        "description": "Abierto temporalmente, sin autenticacion ni roles. Normaliza el nombre a mayusculas y recorta espacios externos. El ID devuelto puede enviarse como folder_type_id al crear carpetas. Requiere abbreviation de 1 a 20 letras o digitos, normalizada a mayusculas.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1827,13 +1827,21 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
-                  "name"
+                  "name",
+                  "abbreviation"
                 ],
                 "properties": {
                   "name": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 255
+                  },
+                  "abbreviation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20,
+                    "description": "Required letters or digits only. Trimmed and normalized to uppercase.",
+                    "example": "EE"
                   }
                 }
               }
@@ -2689,6 +2697,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "abbreviation": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20,
+            "description": "Folder type abbreviation, normalized to uppercase. Defaults: EP for EXPEDIENTE PRINCIPAL and MC for EXPEDIENTE CAUTELAR. Legacy custom types may be null."
           }
         }
       },
@@ -2726,6 +2740,12 @@
             "description": "Opening date. YYYY-MM-DD means midnight in Peru (UTC-05:00); RFC3339 with timezone is also accepted. Returned in UTC. Principal folder inherits the expediente opening date. Required when creating a new additional folder; existing folders keep their date.",
             "format": "date-time",
             "nullable": true
+          },
+          "abbreviation": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20,
+            "description": "Folder type abbreviation, normalized to uppercase. Defaults: EP for EXPEDIENTE PRINCIPAL and MC for EXPEDIENTE CAUTELAR. Legacy custom types may be null."
           }
         }
       },

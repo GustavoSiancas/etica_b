@@ -78,12 +78,27 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	apply("006_folder_opening_date.up.sql") // Versioned migration must be safe to rerun.
+	apply("007_folder_type_abbreviation.up.sql")
+	apply("007_folder_type_abbreviation.up.sql")
 	service := NewDocumentService(db)
-	custom, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "  expediente especial  "})
-	if err != nil || custom.Name != "EXPEDIENTE ESPECIAL" {
+	defaults, err := service.ListFolderTypes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range defaults {
+		want := "EP"
+		if kind.Name == "EXPEDIENTE CAUTELAR" {
+			want = "MC"
+		}
+		if kind.Abbreviation == nil || *kind.Abbreviation != want {
+			t.Fatalf("default abbreviation: %+v", kind)
+		}
+	}
+	custom, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "  expediente especial  ", Abbreviation: " ee "})
+	if err != nil || custom.Name != "EXPEDIENTE ESPECIAL" || custom.Abbreviation == nil || *custom.Abbreviation != "EE" {
 		t.Fatalf("custom folder type: %+v %v", custom, err)
 	}
-	if _, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "Expediente Especial"}); err != ErrFolderTypeDuplicate {
+	if _, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "Expediente Especial", Abbreviation: "EE"}); err != ErrFolderTypeDuplicate {
 		t.Fatalf("duplicate accepted: %v", err)
 	}
 	types, err := service.ListFolderTypes(ctx)
@@ -95,7 +110,7 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	customFolder, err := service.CreateFolder(ctx, 1, CreateFolderInput{FolderTypeID: custom.ID, OpeningDate: &customDate})
-	if err != nil || customFolder.Name != custom.Name || customFolder.FolderTypeID != custom.ID {
+	if err != nil || customFolder.Name != custom.Name || customFolder.FolderTypeID != custom.ID || customFolder.Abbreviation == nil || *customFolder.Abbreviation != "EE" {
 		t.Fatalf("custom type not usable: %+v %v", customFolder, err)
 	}
 	folders, err := service.ListFolders(ctx, 1)
@@ -103,6 +118,9 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 		t.Fatalf("folders: %+v %v", folders, err)
 	}
 	for _, folder := range folders {
+		if folder.Abbreviation == nil {
+			t.Fatal("folder abbreviation missing")
+		}
 		want := "2026-11-04T05:00:00Z"
 		if folder.Name == "EXPEDIENTE CAUTELAR" {
 			want = "2026-10-01T18:30:00Z"

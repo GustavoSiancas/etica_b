@@ -38,7 +38,7 @@ func run() error {
 	} else if applied {
 		log.Printf("Applied consolidated initial migration")
 	}
-	for _, migration := range []string{"migrations/002_expediente_state_location.up.sql", "migrations/003_expediente_opening_year.up.sql", "migrations/004_expediente_folders.up.sql", "migrations/005_document_date.up.sql", "migrations/006_folder_opening_date.up.sql"} {
+	for _, migration := range []string{"migrations/002_expediente_state_location.up.sql", "migrations/003_expediente_opening_year.up.sql", "migrations/004_expediente_folders.up.sql", "migrations/005_document_date.up.sql", "migrations/006_folder_opening_date.up.sql", "migrations/007_folder_type_abbreviation.up.sql"} {
 		slog.Info("startup: checking upgrade migration", "migration", migration)
 		if err := postgres.ApplyUpgradeMigration(ctx, db, migration); err != nil {
 			return fmt.Errorf("PostgreSQL upgrade %s: %s", migration, postgres.DiagnoseMigration(err))

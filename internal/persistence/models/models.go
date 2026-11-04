@@ -31,8 +31,9 @@ type Document struct {
 }
 
 type FolderType struct {
-	ID   int64 `gorm:"primaryKey;autoIncrement"`
-	Name string
+	Abbreviation *string `gorm:"type:varchar(20)"`
+	ID           int64   `gorm:"primaryKey;autoIncrement"`
+	Name         string
 }
 
 func (FolderType) TableName() string { return "folder_types" }
