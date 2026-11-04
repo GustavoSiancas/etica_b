@@ -83,8 +83,6 @@ Los valores del siguiente ejemplo son ilustrativos:
       "opening_date": "2026-10-30",
       "number": "1-2026",
       "init_type": "DENUNCIA_DE_PARTE",
-      "status": "ABIERTO",
-      "location": "DIRECCION DE ETICA",
       "created_at": "2026-10-30T15:00:00Z",
       "updated_at": "2026-10-30T15:00:00Z"
     }
@@ -165,3 +163,7 @@ await getParticipantExpedientes('denunciados', 35, {
   offset: 0
 });
 ```
+
+## Cambio de estado y ubicacion a carpetas
+
+Desde la migracion 008, las respuestas de expediente no incluyen `status` ni `location`. Estos campos pertenecen a sus carpetas, consultables mediante `GET /expedientes/{id}/folders`. Los filtros de estos endpoints por participante buscan ambos valores en una misma carpeta, devuelven cada expediente una sola vez y mantienen la paginacion. `from` y `to` siguen filtrando `opening_date` del expediente.

@@ -96,7 +96,7 @@ Se retiraron `/escritos` y todas sus rutas, `/document-stages` y `POST /expedien
 
 Los IDs inválidos devuelven 400; expedientes, secciones, documentos o vínculos inexistentes devuelven 404. Las rutas de sección verifican siempre que la sección pertenezca al expediente indicado.
 
-Si el expediente está `CERRADO`, las mutaciones de secciones y vínculos devuelven 409. Los documentos y sus cargas también devuelven 409 si cualquiera de sus expedientes está cerrado. Las consultas siguen disponibles; reabrir mediante `PATCH /expedientes/{id}/status` permite volver a ingresar información. Ver [estado y ubicación](expedientes.md).
+Si la carpeta esta `CERRADO`, sus secciones y vinculos no se pueden modificar (409). Los documentos y cargas se protegen si cualquiera de sus carpetas esta cerrada. Reabrir con `PATCH /expedientes/{expedienteID}/folders/{folderID}/status`.
 
 ## Fecha de apertura de carpetas
 
@@ -148,3 +148,17 @@ La migracion `007_folder_type_abbreviation.up.sql` se aplica al arrancar y asign
 `GET /folder-types`, `POST /folder-types`, `GET /expedientes/{expedienteID}/folders` y `POST /expedientes/{expedienteID}/folders` devuelven `abbreviation`. Crear una carpeta sigue recibiendo `folder_type_id` y `opening_date`: las siglas se obtienen del tipo seleccionado.
 
 Los tipos personalizados existentes conservan `abbreviation: null`, porque no se conocen sus siglas. Las siglas de tipos nuevos se indican explicitamente al crearlos.
+
+## Estado y ubicacion independientes
+
+La migracion `008_folder_state_location.up.sql` mueve `status` y `location` del expediente a las carpetas. Solo la carpeta `EXPEDIENTE PRINCIPAL` hereda los valores del expediente existente. Las demas comienzan en `ABIERTO` y `DIRECCION DE ETICA`.
+
+`POST /expedientes/{expedienteID}/folders` admite opcionalmente `status` y `location`:
+
+```json
+{"folder_type_id":2,"opening_date":"2026-11-04","status":"ABIERTO","location":"CONSEJO DE ETICA"}
+```
+
+El POST y el GET de carpetas devuelven ambos campos. Crear un tipo que ya existe en el expediente conserva su carpeta, fecha, estado y ubicacion.
+
+Los cambios se realizan mediante `PATCH /expedientes/{expedienteID}/folders/{folderID}/status` y `/location`. Los catalogos estan en `GET /folder-statuses` y `GET /folder-locations`. Ver [reglas de cierre y filtros](expedientes.md).

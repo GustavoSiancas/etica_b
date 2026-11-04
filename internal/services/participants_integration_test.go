@@ -77,6 +77,9 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 		}
 	}
 	apply("migrations/001_initial.up.sql")
+	for _, migration := range []string{"004_expediente_folders.up.sql", "005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql"} {
+		apply("migrations/" + migration)
+	}
 	if err := db.Exec(`INSERT INTO expedientes(description,opening_date,init_type) VALUES ('Flow fixture','2026-01-01','DENUNCIA_DE_OFICIO'); INSERT INTO denunciantes(name,document_type,document_number) VALUES ('Ana','DNI','00000001'); INSERT INTO denunciados(name,document_type,document_number,registration_number) VALUES ('Luis','DNI','00000002',1); INSERT INTO expediente_denunciantes(expediente_id,denunciante_id) VALUES (1,1); INSERT INTO expediente_denunciados(expediente_id,denunciado_id) VALUES (1,1);`).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -298,10 +301,14 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 		}
 		scopedIDs = append(scopedIDs, row.ID)
 	}
-	if _, err := cases.UpdateLocation(ctx, scopedIDs[1], UpdateExpedienteLocationInput{Location: UbicacionConsejo}); err != nil {
+	scopedFolders, err := documents.ListFolders(ctx, scopedIDs[1])
+	if err != nil || len(scopedFolders) != 1 {
+		t.Fatal("missing principal folder")
+	}
+	if _, err := documents.UpdateFolderLocation(ctx, scopedIDs[1], scopedFolders[0].ID, UpdateFolderLocationInput{Location: UbicacionConsejo}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cases.UpdateStatus(ctx, scopedIDs[1], UpdateExpedienteStatusInput{Status: ExpedienteCerrado}); err != nil {
+	if _, err := documents.UpdateFolderStatus(ctx, scopedIDs[1], scopedFolders[0].ID, UpdateFolderStatusInput{Status: FolderCerrado}); err != nil {
 		t.Fatal(err)
 	}
 	for _, role := range []string{"denunciante", "denunciado"} {
@@ -324,11 +331,11 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 				t.Fatal("scoped order or membership incorrect")
 			}
 		}
-		page, err := list(ctx, id, 20, 0, ExpedienteFilters{Status: ExpedienteCerrado, Location: UbicacionConsejo})
+		page, err := list(ctx, id, 20, 0, ExpedienteFilters{Status: FolderCerrado, Location: UbicacionConsejo})
 		if err != nil || page.Total != 1 || len(page.Data) != 1 || page.Data[0].ID != scopedIDs[1] {
 			t.Fatalf("combined scoped filters: %+v %v", page, err)
 		}
-		page, err = list(ctx, id, 20, 0, ExpedienteFilters{Status: ExpedienteAbierto, Location: UbicacionConsejo})
+		page, err = list(ctx, id, 20, 0, ExpedienteFilters{Status: FolderAbierto, Location: UbicacionConsejo})
 		if err != nil || page.Total != 0 || len(page.Data) != 0 || page.Data == nil {
 			t.Fatal("empty scoped list must be [] with total 0")
 		}
@@ -346,7 +353,7 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 		{ExpedienteFilters{From: "2026-10-22"}, 1},
 		{ExpedienteFilters{To: "2026-10-21"}, 1},
 		{ExpedienteFilters{From: "2026-10-23"}, 0},
-		{ExpedienteFilters{From: "2026-10-22", To: "2026-10-22", Status: ExpedienteCerrado, Location: UbicacionConsejo}, 1},
+		{ExpedienteFilters{From: "2026-10-22", To: "2026-10-22", Status: FolderCerrado, Location: UbicacionConsejo}, 1},
 	} {
 		for _, role := range []string{"denunciante", "denunciado"} {
 			id := scopedComplainant.ID

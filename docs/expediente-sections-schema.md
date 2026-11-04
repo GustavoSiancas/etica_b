@@ -12,7 +12,7 @@ psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_initial.up.sql
 - `expediente_year_counters`: conserva la numeración anual automática.
 - `document_types`: conserva sugerencias de tipo, sin FK desde las secciones.
 
-El expediente tiene estado `ABIERTO` o `CERRADO` y ubicación `DIRECCION DE ETICA`, `CONSEJO DE ETICA` o `TRIBUNAL DE HONOR`, restringidos mediante CHECK en SQL. Los valores iniciales son `ABIERTO` y `DIRECCION DE ETICA`. Los servicios de la aplicación bloquean cambios de información cuando está cerrado, incluidos documentos compartidos y cargas; se permite reabrir mediante el endpoint de estado.
+Cada carpeta tiene estado `ABIERTO` o `CERRADO` y ubicacion `DIRECCION DE ETICA`, `CONSEJO DE ETICA` o `TRIBUNAL DE HONOR`. La migracion 008 hereda los valores historicos del expediente en su carpeta `EXPEDIENTE PRINCIPAL` y retira las columnas del expediente. El cierre protege solo el contenido de esa carpeta; un documento compartido se protege si alguna carpeta propietaria esta cerrada.
 
 `expediente_section_parent_id = NULL` identifica una sección raíz. Cada sección puede tener varias hijas, sin límite fijo de profundidad. Una FK compuesta garantiza que el padre pertenezca al mismo expediente. Se impiden padres propios y ciclos indirectos mediante una restricción y un trigger. Las modificaciones se serializan por expediente; si el nivel de aislamiento produce errores de serialización, el cliente debe reintentar la transacción.
 
@@ -40,7 +40,7 @@ La migraci?n 004 se aplica autom?ticamente al arrancar, en una transacci?n y una
 
 - `GET /folder-types`: cat?logo de nombres e IDs.
 - `GET /expedientes/{id}/folders`: carpetas del expediente, incluyendo el nombre del cat?logo.
-- `POST /expedientes/{id}/folders` con `{"folder_type_id":2}`: a?ade una carpeta; si ya existe devuelve la misma. No se permite en expedientes cerrados.
+- `POST /expedientes/{id}/folders` con `{"folder_type_id":2,"opening_date":"2026-11-04"}`: crea una carpeta independiente; admite `status` y `location` opcionales. Si ya existe devuelve la misma sin alterar sus valores.
 - `GET /expedientes/{id}/folders/{folderID}/sections`: secciones y subsecciones de esa carpeta.
 - `POST /expedientes/{id}/sections`: admite `expediente_folder_id`. Si se omite, hereda la carpeta del padre o utiliza la principal para una ra?z. La respuesta de secci?n incluye `expediente_folder_id`.
 

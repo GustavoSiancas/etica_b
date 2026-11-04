@@ -15,22 +15,10 @@ type ExpedienteAPI interface {
 	Create(context.Context, services.CreateExpedienteInput) (services.ExpedienteResponse, error)
 	List(context.Context, int, int, ...services.ExpedienteFilters) (services.ExpedienteList, error)
 	ListInitTypes(context.Context) ([]services.ExpedienteInitTypeResponse, error)
-	ListLocations(context.Context) ([]services.ExpedienteLocationResponse, error)
-	UpdateLocation(context.Context, int64, services.UpdateExpedienteLocationInput) (services.ExpedienteResponse, error)
-	ListStatuses(context.Context) ([]services.ExpedienteStatusResponse, error)
-	UpdateStatus(context.Context, int64, services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error)
 }
 
 func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI) {
 	registerParticipantExpedientes(mux, service)
-	mux.HandleFunc("GET /expediente-locations", func(w http.ResponseWriter, r *http.Request) {
-		result, err := service.ListLocations(r.Context())
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
 	mux.HandleFunc("PATCH /expedientes/{id}/description", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {
@@ -42,48 +30,6 @@ func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI) {
 			return
 		}
 		result, err := service.UpdateDescription(r.Context(), id, input)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
-	mux.HandleFunc("PATCH /expedientes/{id}/location", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id <= 0 {
-			failure(w, services.ErrExpedienteInvalid)
-			return
-		}
-		var input services.UpdateExpedienteLocationInput
-		if !decode(w, r, &input) {
-			return
-		}
-		result, err := service.UpdateLocation(r.Context(), id, input)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
-	mux.HandleFunc("PATCH /expedientes/{id}/status", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id <= 0 {
-			failure(w, services.ErrExpedienteInvalid)
-			return
-		}
-		var input services.UpdateExpedienteStatusInput
-		if !decode(w, r, &input) {
-			return
-		}
-		result, err := service.UpdateStatus(r.Context(), id, input)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, http.StatusOK, result)
-	})
-	mux.HandleFunc("GET /expediente-statuses", func(w http.ResponseWriter, r *http.Request) {
-		result, err := service.ListStatuses(r.Context())
 		if err != nil {
 			failure(w, err)
 			return

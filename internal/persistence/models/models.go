@@ -12,8 +12,6 @@ type Expediente struct {
 	Description string     `gorm:"type:text;not null;default:(-)"`
 	OpeningDate *time.Time `gorm:"type:date"`
 	Number      string     `gorm:"type:varchar(50);not null;uniqueIndex;default:(-)"`
-	Status      string     `gorm:"type:varchar(30);not null;default:ABIERTO"`
-	Location    string     `gorm:"type:varchar(30);not null;default:DIRECCION DE ETICA"`
 	InitType    *string    `gorm:"type:expediente_init_type_enum"`
 	Audit
 	Folders      []ExpedienteFolder      `gorm:"foreignKey:ExpedienteID"`
@@ -39,6 +37,8 @@ type FolderType struct {
 func (FolderType) TableName() string { return "folder_types" }
 
 type ExpedienteFolder struct {
+	Status       string     `gorm:"type:varchar(30);not null;default:ABIERTO"`
+	Location     string     `gorm:"type:varchar(30);not null;default:DIRECCION DE ETICA"`
 	OpeningDate  *time.Time `gorm:"type:timestamptz"`
 	ID           int64      `gorm:"primaryKey;autoIncrement"`
 	ExpedienteID int64

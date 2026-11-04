@@ -126,14 +126,24 @@ func (s *DocumentService) CreateSection(ctx context.Context, expedienteID int64,
 		if err := validParent(tx, expedienteID, input.ParentID); err != nil {
 			return err
 		}
-		if row.ExpedienteFolderID != 0 {
-			var count int64
-			if err := tx.Model(&models.ExpedienteFolder{}).Where("id = ? AND expediente_id = ?", row.ExpedienteFolderID, expedienteID).Count(&count).Error; err != nil {
+		if input.ParentID != nil {
+			parent, err := getSection(tx, expedienteID, *input.ParentID)
+			if err != nil {
 				return err
 			}
-			if count != 1 {
+			if row.ExpedienteFolderID != 0 && row.ExpedienteFolderID != parent.ExpedienteFolderID {
 				return ErrSectionInvalid
 			}
+			row.ExpedienteFolderID = parent.ExpedienteFolderID
+		} else if row.ExpedienteFolderID == 0 {
+			var principal models.ExpedienteFolder
+			if err := tx.Select("expediente_folders.*").Joins("JOIN folder_types t ON t.id=expediente_folders.folder_type_id").Where("expediente_folders.expediente_id = ? AND t.name = ?", expedienteID, "EXPEDIENTE PRINCIPAL").First(&principal).Error; err != nil {
+				return err
+			}
+			row.ExpedienteFolderID = principal.ID
+		}
+		if _, err := lockFolder(tx, expedienteID, row.ExpedienteFolderID, true); err != nil {
+			return err
 		}
 		if err := tx.Clauses(clause.Returning{}).Create(&row).Error; err != nil {
 			return err
@@ -176,6 +186,9 @@ func (s *DocumentService) UpdateSection(ctx context.Context, expedienteID, id in
 	var result models.ExpedienteSection
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
+			return err
+		}
+		if err := requireWritableSection(tx, expedienteID, id); err != nil {
 			return err
 		}
 		row, err := getSection(tx, expedienteID, id)
@@ -223,7 +236,7 @@ func (s *DocumentService) DeleteSection(ctx context.Context, expedienteID, id in
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
 		}
-		if _, err := getSection(tx, expedienteID, id); err != nil {
+		if err := requireWritableSection(tx, expedienteID, id); err != nil {
 			return err
 		}
 		var count int64
@@ -249,7 +262,7 @@ func (s *DocumentService) CreateInSection(ctx context.Context, expedienteID, sec
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
 		}
-		if _, err := getSection(tx, expedienteID, sectionID); err != nil {
+		if err := requireWritableSection(tx, expedienteID, sectionID); err != nil {
 			return err
 		}
 		if err := tx.Create(&row).Error; err != nil {
@@ -289,7 +302,7 @@ func (s *DocumentService) AttachDocument(ctx context.Context, expedienteID, sect
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
 		}
-		if _, err := getSection(tx, expedienteID, sectionID); err != nil {
+		if err := requireWritableSection(tx, expedienteID, sectionID); err != nil {
 			return err
 		}
 		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.ExpedienteSectionDocument{ExpedienteSectionID: sectionID, DocumentID: documentID}).Error
@@ -306,7 +319,7 @@ func (s *DocumentService) DetachDocument(ctx context.Context, expedienteID, sect
 		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
 		}
-		if _, err := getSection(tx, expedienteID, sectionID); err != nil {
+		if err := requireWritableSection(tx, expedienteID, sectionID); err != nil {
 			return err
 		}
 		result := tx.Where("expediente_section_id = ? AND document_id = ?", sectionID, documentID).Delete(&models.ExpedienteSectionDocument{})

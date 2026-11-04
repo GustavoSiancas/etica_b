@@ -16,16 +16,6 @@ import (
 )
 
 var ErrExpedienteInvalid = errors.New("invalid expediente request")
-var ErrExpedienteClosed = errors.New("expediente is closed; reopen it before modifying information")
-
-const (
-	ExpedienteAbierto  = "ABIERTO"
-	ExpedienteCerrado  = "CERRADO"
-	UbicacionDireccion = "DIRECCION DE ETICA"
-	UbicacionConsejo   = "CONSEJO DE ETICA"
-	UbicacionTribunal  = "TRIBUNAL DE HONOR"
-)
-
 var ErrExpedienteDuplicate = errors.New("expediente number already exists")
 
 type Date struct{ time.Time }
@@ -55,18 +45,12 @@ type ExpedienteInitTypeResponse struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
 }
-type ExpedienteStatusResponse struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-}
 type ExpedienteResponse struct {
 	ID          int64     `json:"id"`
 	Description string    `json:"description"`
 	OpeningDate *Date     `json:"opening_date"`
 	Number      string    `json:"number"`
 	InitType    *string   `json:"init_type"`
-	Status      string    `json:"status"`
-	Location    string    `json:"location"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -90,26 +74,6 @@ var expedienteInitTypes = map[string]string{
 
 func ValidExpedienteInitType(value string) bool { _, ok := expedienteInitTypes[value]; return ok }
 
-var expedienteStatuses = []ExpedienteStatusResponse{
-	{Value: ExpedienteAbierto, Label: "Abierto"},
-	{Value: ExpedienteCerrado, Label: "Cerrado"},
-}
-
-type ExpedienteLocationResponse struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-}
-
-var expedienteLocations = []ExpedienteLocationResponse{
-	{Value: UbicacionDireccion, Label: "Direccion de Etica"},
-	{Value: UbicacionConsejo, Label: "Consejo de Etica"},
-	{Value: UbicacionTribunal, Label: "Tribunal de Honor"},
-}
-
-func validLocation(value string) bool {
-	return value == UbicacionDireccion || value == UbicacionConsejo || value == UbicacionTribunal
-}
-
 func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteInput) (ExpedienteResponse, error) {
 	input.Description = strings.TrimSpace(input.Description)
 	if !utf8.ValidString(input.Description) || strings.ContainsRune(input.Description, 0) || input.OpeningDate == nil || input.OpeningDate.Year() < 1 || input.OpeningDate.Year() > 9999 || !ValidExpedienteInitType(input.InitType) || !validParticipantIDs(input.DenuncianteIDs) || !validParticipantIDs(input.DenunciadoIDs) {
@@ -121,7 +85,7 @@ func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteIn
 		parsed := input.OpeningDate.Time
 		openingDate = &parsed
 	}
-	expediente := models.Expediente{Description: input.Description, OpeningDate: openingDate, Status: ExpedienteAbierto, Location: UbicacionDireccion, InitType: &initType}
+	expediente := models.Expediente{Description: input.Description, OpeningDate: openingDate, InitType: &initType}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if len(input.DenuncianteIDs) > 0 {
 			var count int64
@@ -193,7 +157,7 @@ func ValidExpedienteFilters(f ExpedienteFilters) bool {
 	if f.From != "" && f.To != "" && f.From > f.To {
 		return false
 	}
-	return (f.Status == "" || f.Status == ExpedienteAbierto || f.Status == ExpedienteCerrado) && (f.Location == "" || validLocation(f.Location))
+	return (f.Status == "" || f.Status == FolderAbierto || f.Status == FolderCerrado) && (f.Location == "" || validLocation(f.Location))
 }
 func (s *ExpedienteService) List(ctx context.Context, limit, offset int, filters ...ExpedienteFilters) (ExpedienteList, error) {
 	if len(filters) > 1 {
@@ -243,11 +207,16 @@ func (s *ExpedienteService) listExpedientes(ctx context.Context, limit, offset i
 		}
 		query = query.Where(scope, participantID)
 	}
-	if filter.Status != "" {
-		query = query.Where("status = ?", filter.Status)
-	}
-	if filter.Location != "" {
-		query = query.Where("location = ?", filter.Location)
+	// Both filters must match the same folder; EXISTS avoids duplicate expedientes.
+	if filter.Status != "" || filter.Location != "" {
+		folders := db.Model(&models.ExpedienteFolder{}).Select("1").Where("expediente_folders.expediente_id = expedientes.id")
+		if filter.Status != "" {
+			folders = folders.Where("status = ?", filter.Status)
+		}
+		if filter.Location != "" {
+			folders = folders.Where("location = ?", filter.Location)
+		}
+		query = query.Where("EXISTS (?)", folders)
 	}
 	if filter.From != "" {
 		query = query.Where("opening_date >= ?", filter.From)
@@ -268,56 +237,6 @@ func (s *ExpedienteService) listExpedientes(ctx context.Context, limit, offset i
 	return result, nil
 }
 
-type UpdateExpedienteStatusInput struct {
-	Status string `json:"status"`
-}
-
-func (s *ExpedienteService) UpdateStatus(ctx context.Context, id int64, input UpdateExpedienteStatusInput) (ExpedienteResponse, error) {
-	status := strings.TrimSpace(input.Status)
-	if id <= 0 || (status != ExpedienteAbierto && status != ExpedienteCerrado) {
-		return ExpedienteResponse{}, ErrExpedienteInvalid
-	}
-	var row models.Expediente
-	// A row lock serializes close/reopen against all expediente mutations.
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, id).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrExpedienteNotFound
-		}
-		if err != nil {
-			return err
-		}
-		return tx.Model(&row).Update("status", status).Error
-	})
-	return expedienteResponse(row), err
-}
-
-type UpdateExpedienteLocationInput struct {
-	Location string `json:"location"`
-}
-
-func (s *ExpedienteService) UpdateLocation(ctx context.Context, id int64, input UpdateExpedienteLocationInput) (ExpedienteResponse, error) {
-	location := strings.TrimSpace(input.Location)
-	if id <= 0 || !validLocation(location) {
-		return ExpedienteResponse{}, ErrExpedienteInvalid
-	}
-	var row models.Expediente
-	// Location is administrative and remains editable while closed. Updating
-	// only this column preserves status and leaves all content guards intact.
-	result := s.db.WithContext(ctx).Model(&row).Clauses(clause.Returning{}).Where("id = ?", id).Update("location", location)
-	if result.Error != nil {
-		return ExpedienteResponse{}, result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ExpedienteResponse{}, ErrExpedienteNotFound
-	}
-	return expedienteResponse(row), nil
-}
-
-func (s *ExpedienteService) ListLocations(context.Context) ([]ExpedienteLocationResponse, error) {
-	return append([]ExpedienteLocationResponse(nil), expedienteLocations...), nil
-}
-
 func (s *ExpedienteService) ListInitTypes(ctx context.Context) ([]ExpedienteInitTypeResponse, error) {
 	result := make([]ExpedienteInitTypeResponse, 0, len(expedienteInitTypes))
 	for value, label := range expedienteInitTypes {
@@ -327,16 +246,12 @@ func (s *ExpedienteService) ListInitTypes(ctx context.Context) ([]ExpedienteInit
 	return result, nil
 }
 
-func (s *ExpedienteService) ListStatuses(context.Context) ([]ExpedienteStatusResponse, error) {
-	return append([]ExpedienteStatusResponse(nil), expedienteStatuses...), nil
-}
-
 func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	var openingDate *Date
 	if e.OpeningDate != nil {
 		openingDate = &Date{Time: *e.OpeningDate}
 	}
-	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, Status: e.Status, Location: e.Location, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
+	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
 }
 
 // UpdateExpedienteDescriptionInput requires an explicit string; empty clears it.
@@ -360,9 +275,6 @@ func (s *ExpedienteService) UpdateDescription(ctx context.Context, id int64, inp
 		}
 		if err != nil {
 			return err
-		}
-		if row.Status == ExpedienteCerrado {
-			return ErrExpedienteClosed
 		}
 		return tx.Model(&row).Update("description", description).Error
 	})

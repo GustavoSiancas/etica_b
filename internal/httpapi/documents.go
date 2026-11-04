@@ -9,6 +9,10 @@ import (
 )
 
 type DocumentAPI interface {
+	ListLocations(context.Context) ([]services.FolderLocationResponse, error)
+	ListStatuses(context.Context) ([]services.FolderStatusResponse, error)
+	UpdateFolderStatus(context.Context, int64, int64, services.UpdateFolderStatusInput) (services.FolderResponse, error)
+	UpdateFolderLocation(context.Context, int64, int64, services.UpdateFolderLocationInput) (services.FolderResponse, error)
 	CreateFolderType(context.Context, services.CreateFolderTypeInput) (services.FolderTypeResponse, error)
 	ListFolderTypes(context.Context) ([]services.FolderTypeResponse, error)
 	ListFolders(context.Context, int64) ([]services.FolderResponse, error)

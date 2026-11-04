@@ -117,7 +117,7 @@
                 "CERRADO"
               ]
             },
-            "description": "Omitir para listar ambos estados."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "location",
@@ -131,7 +131,7 @@
                 "TRIBUNAL DE HONOR"
               ]
             },
-            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "from",
@@ -166,7 +166,7 @@
             }
           }
         },
-        "description": " Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha."
+        "description": " Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha. status y location filtran carpetas; ambos deben coincidir en una misma carpeta. No duplican expedientes."
       }
     },
     "/denunciantes": {
@@ -693,91 +693,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "409": {
-            "description": "El expediente esta cerrado; debe reabrirse antes de modificarlo."
           }
         },
-        "description": "Actualiza la descripcion de un expediente abierto. Recorta espacios externos. Una cadena vacia borra la descripcion. No acepta null ni campos adicionales."
-      }
-    },
-    "/expedientes/{id}/status": {
-      "patch": {
-        "tags": [
-          "Expedientes"
-        ],
-        "summary": "Cerrar o reabrir expediente",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/ExpedienteId"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "status"
-                ],
-                "properties": {
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "ABIERTO",
-                      "CERRADO"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Estado actualizado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Expediente"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        },
-        "description": "Solo ABIERTO o CERRADO. Permite reabrir un expediente cerrado; conserva su ubicacion."
-      }
-    },
-    "/expediente-statuses": {
-      "get": {
-        "tags": [
-          "Expedientes"
-        ],
-        "summary": "Estados permitidos: ABIERTO y CERRADO",
-        "description": "Cat?logo inicial de estados sugeridos para el frontend. PATCH /expedientes/{id}/status sigue aceptando texto libre de hasta 30 caracteres.",
-        "responses": {
-          "200": {
-            "description": "Estados sugeridos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ExpedienteStatus"
-                  }
-                }
-              }
-            }
-          }
-        }
+        "description": "Actualiza la descripcion del expediente independientemente del estado de sus carpetas. Recorta espacios externos. Una cadena vacia borra la descripcion. No acepta null ni campos adicionales."
       }
     },
     "/dev/demo-data/reset": {
@@ -1517,92 +1435,6 @@
         }
       }
     },
-    "/expediente-locations": {
-      "get": {
-        "tags": [
-          "Expedientes"
-        ],
-        "summary": "Ubicaciones permitidas",
-        "responses": {
-          "200": {
-            "description": "Tres ubicaciones disponibles",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ExpedienteLocation"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/expedientes/{id}/location": {
-      "patch": {
-        "tags": [
-          "Expedientes"
-        ],
-        "summary": "Cambiar ubicacion de un expediente abierto o cerrado",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 1
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "location"
-                ],
-                "properties": {
-                  "location": {
-                    "type": "string",
-                    "enum": [
-                      "DIRECCION DE ETICA",
-                      "CONSEJO DE ETICA",
-                      "TRIBUNAL DE HONOR"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Expediente actualizado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Expediente"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        },
-        "description": "Permite cambiar location en estado ABIERTO o CERRADO. Conserva el estado y no habilita cambios de contenido."
-      }
-    },
     "/denunciantes/{id}/expedientes": {
       "get": {
         "tags": [
@@ -1610,7 +1442,7 @@
           "Participantes"
         ],
         "summary": "Listar expedientes por denunciante",
-        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha.",
+        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha. status y location filtran carpetas; ambos deben coincidir en una misma carpeta. No duplican expedientes.",
         "parameters": [
           {
             "name": "id",
@@ -1640,7 +1472,7 @@
                 "CERRADO"
               ]
             },
-            "description": "Omitir para listar ambos estados."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "location",
@@ -1654,7 +1486,7 @@
                 "TRIBUNAL DE HONOR"
               ]
             },
-            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "from",
@@ -1704,7 +1536,7 @@
           "Participantes"
         ],
         "summary": "Listar expedientes por denunciado",
-        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha.",
+        "description": "Solo expedientes vinculados al participante. Filtros status y location combinables; total se calcula antes de paginar. Participante existente sin expedientes devuelve una pagina vacia; inexistente devuelve 404. Orden created_at DESC, id DESC. Los filtros from y to usan opening_date, incluyen ambas fechas y se combinan con status y location antes de paginar. Los registros sin fecha de apertura no coinciden cuando hay limites de fecha. status y location filtran carpetas; ambos deben coincidir en una misma carpeta. No duplican expedientes.",
         "parameters": [
           {
             "name": "id",
@@ -1734,7 +1566,7 @@
                 "CERRADO"
               ]
             },
-            "description": "Omitir para listar ambos estados."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "location",
@@ -1748,7 +1580,7 @@
                 "TRIBUNAL DE HONOR"
               ]
             },
-            "description": "Filtro opcional combinable con status. total refleja los filtros antes de paginar."
+            "description": "Filtro sobre una misma carpeta del expediente."
           },
           {
             "name": "from",
@@ -1990,6 +1822,199 @@
           }
         }
       }
+    },
+    "/expedientes/{expedienteID}/folders/{folderID}/status": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Actualizar status de una carpeta",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "folderID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ABIERTO",
+                      "CERRADO"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Actualiza solo la carpeta indicada. Permite reabrir o cambiar la ubicacion de una carpeta cerrada. Devuelve 404 si la carpeta no pertenece al expediente."
+      }
+    },
+    "/expedientes/{expedienteID}/folders/{folderID}/location": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Actualizar location de una carpeta",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "folderID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "location"
+                ],
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "enum": [
+                      "DIRECCION DE ETICA",
+                      "CONSEJO DE ETICA",
+                      "TRIBUNAL DE HONOR"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expediente actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Actualiza solo la carpeta indicada. Permite reabrir o cambiar la ubicacion de una carpeta cerrada. Devuelve 404 si la carpeta no pertenece al expediente."
+      }
+    },
+    "/folder-statuses": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Catalogo de estados de carpetas",
+        "description": "Valores permitidos para las carpetas.",
+        "responses": {
+          "200": {
+            "description": "Estados sugeridos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FolderStatus"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folder-locations": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Catalogo de ubicaciones de carpetas",
+        "responses": {
+          "200": {
+            "description": "Tres ubicaciones disponibles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FolderLocation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Valores permitidos para las carpetas."
+      }
     }
   },
   "components": {
@@ -2184,14 +2209,6 @@
             "type": "string",
             "nullable": true
           },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ABIERTO",
-              "CERRADO"
-            ],
-            "default": "ABIERTO"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -2208,15 +2225,6 @@
           "description": {
             "type": "string",
             "description": "Descripcion del expediente, texto libre"
-          },
-          "location": {
-            "type": "string",
-            "enum": [
-              "DIRECCION DE ETICA",
-              "CONSEJO DE ETICA",
-              "TRIBUNAL DE HONOR"
-            ],
-            "default": "DIRECCION DE ETICA"
           }
         }
       },
@@ -2308,21 +2316,6 @@
             "nullable": true,
             "description": "Optional document date. Input: YYYY-MM-DD (midnight in Peru, UTC-05:00) or RFC3339 with timezone. Output: UTC RFC3339. PATCH null clears the value; omitted preserves it.",
             "format": "date-time"
-          }
-        }
-      },
-      "ExpedienteStatus": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string",
-            "enum": [
-              "ABIERTO",
-              "CERRADO"
-            ]
-          },
-          "label": {
-            "type": "string"
           }
         }
       },
@@ -2671,22 +2664,6 @@
           }
         }
       },
-      "ExpedienteLocation": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string",
-            "enum": [
-              "DIRECCION DE ETICA",
-              "CONSEJO DE ETICA",
-              "TRIBUNAL DE HONOR"
-            ]
-          },
-          "label": {
-            "type": "string"
-          }
-        }
-      },
       "FolderType": {
         "type": "object",
         "properties": {
@@ -2746,8 +2723,27 @@
             "nullable": true,
             "maxLength": 20,
             "description": "Folder type abbreviation, normalized to uppercase. Defaults: EP for EXPEDIENTE PRINCIPAL and MC for EXPEDIENTE CAUTELAR. Legacy custom types may be null."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR"
+            ]
           }
-        }
+        },
+        "required": [
+          "status",
+          "location"
+        ]
       },
       "CreateFolder": {
         "type": "object",
@@ -2765,6 +2761,54 @@
             "type": "string",
             "description": "Opening date. YYYY-MM-DD means midnight in Peru (UTC-05:00); RFC3339 with timezone is also accepted. Returned in UTC. Principal folder inherits the expediente opening date. Required when creating a new additional folder; existing folders keep their date.",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2}))?$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ],
+            "default": "ABIERTO"
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR"
+            ],
+            "default": "DIRECCION DE ETICA"
+          }
+        }
+      },
+      "FolderStatus": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "FolderLocation": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR"
+            ]
+          },
+          "label": {
+            "type": "string"
           }
         }
       }

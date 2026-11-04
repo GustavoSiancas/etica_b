@@ -18,15 +18,16 @@ type fakeExpedientes struct {
 	participantRole  string
 	participantErr   error
 	filters          services.ExpedienteFilters
-	locationInput    services.UpdateExpedienteLocationInput
-	locationID       int64
 	createErr        error
 	limit, offset    int
-	statusInput      services.UpdateExpedienteStatusInput
-	statusID         int64
 	statusErr        error
 }
 type fakeDocuments struct {
+	locationInput services.UpdateFolderLocationInput
+	locationID    int64
+	statusInput   services.UpdateFolderStatusInput
+	statusID      int64
+	statusErr     error
 	DocumentAPI
 	input        services.CreateDocumentInput
 	create       services.DocumentResponse
@@ -94,20 +95,20 @@ func (f *fakeDocuments) ListByExpediente(_ context.Context, id int64) ([]service
 
 func (f *fakeExpedientes) Create(_ context.Context, input services.CreateExpedienteInput) (services.ExpedienteResponse, error) {
 	initType := input.InitType
-	return services.ExpedienteResponse{ID: 1, Number: "1-2026", InitType: &initType, Status: "ABIERTO", Location: services.UbicacionDireccion}, f.createErr
+	return services.ExpedienteResponse{ID: 1, Number: "1-2026", InitType: &initType}, f.createErr
 }
 func (f *fakeExpedientes) ListInitTypes(context.Context) ([]services.ExpedienteInitTypeResponse, error) {
 	return []services.ExpedienteInitTypeResponse{{Value: "DENUNCIA_DE_OFICIO", Label: "DENUNCIA DE OFICIO"}}, nil
 }
-func (f *fakeExpedientes) ListLocations(ctx context.Context) ([]services.ExpedienteLocationResponse, error) {
-	return services.NewExpedienteService(nil).ListLocations(ctx)
+func (f *fakeDocuments) ListLocations(ctx context.Context) ([]services.FolderLocationResponse, error) {
+	return services.NewDocumentService(nil).ListLocations(ctx)
 }
-func (f *fakeExpedientes) UpdateLocation(_ context.Context, id int64, input services.UpdateExpedienteLocationInput) (services.ExpedienteResponse, error) {
+func (f *fakeDocuments) UpdateFolderLocation(_ context.Context, expedienteID, id int64, input services.UpdateFolderLocationInput) (services.FolderResponse, error) {
 	f.locationID, f.locationInput = id, input
-	return services.ExpedienteResponse{ID: id, Location: input.Location}, f.statusErr
+	return services.FolderResponse{ID: id, ExpedienteID: expedienteID, Location: input.Location}, f.statusErr
 }
-func (f *fakeExpedientes) ListStatuses(context.Context) ([]services.ExpedienteStatusResponse, error) {
-	return []services.ExpedienteStatusResponse{{Value: "ABIERTO", Label: "Abierto"}, {Value: "CERRADO", Label: "Cerrado"}}, nil
+func (f *fakeDocuments) ListStatuses(context.Context) ([]services.FolderStatusResponse, error) {
+	return []services.FolderStatusResponse{{Value: "ABIERTO", Label: "Abierto"}, {Value: "CERRADO", Label: "Cerrado"}}, nil
 }
 func (f *fakeExpedientes) List(_ context.Context, limit, offset int, filters ...services.ExpedienteFilters) (services.ExpedienteList, error) {
 	f.limit = limit
@@ -117,9 +118,9 @@ func (f *fakeExpedientes) List(_ context.Context, limit, offset int, filters ...
 	}
 	return services.ExpedienteList{Data: []services.ExpedienteResponse{}, Limit: limit, Offset: offset}, nil
 }
-func (f *fakeExpedientes) UpdateStatus(_ context.Context, id int64, input services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error) {
+func (f *fakeDocuments) UpdateFolderStatus(_ context.Context, expedienteID, id int64, input services.UpdateFolderStatusInput) (services.FolderResponse, error) {
 	f.statusID, f.statusInput = id, input
-	return services.ExpedienteResponse{ID: id, Status: input.Status}, f.statusErr
+	return services.FolderResponse{ID: id, ExpedienteID: expedienteID, Status: input.Status}, f.statusErr
 }
 
 func TestCreateExpedienteHTTP(t *testing.T) {
@@ -145,8 +146,11 @@ func TestCreateExpedienteHTTP(t *testing.T) {
 			t.Fatal("exposed database error")
 		}
 		if test.status == 201 {
+			if strings.Contains(response.Body.String(), `"status":`) || strings.Contains(response.Body.String(), `"location":`) {
+				t.Fatal("expediente still owns folder fields")
+			}
 			var data services.ExpedienteResponse
-			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil || data.Status != "ABIERTO" || data.ID != 1 || data.InitType == nil || *data.InitType != "DENUNCIA_DE_OFICIO" {
+			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil || data.ID != 1 || data.InitType == nil || *data.InitType != "DENUNCIA_DE_OFICIO" {
 				t.Fatal("incorrect create response")
 			}
 		}
@@ -178,11 +182,11 @@ func TestListExpedientesHTTP(t *testing.T) {
 	}
 }
 
-func TestUpdateExpedienteStatusHTTP(t *testing.T) {
-	fake := &fakeExpedientes{}
-	handler := Routes(nil, fake, &fakeDocuments{}, &fakeParticipants{})
+func TestUpdateFolderStatusHTTP(t *testing.T) {
+	fake := &fakeDocuments{}
+	handler := Routes(nil, &fakeExpedientes{}, fake, &fakeParticipants{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/status", strings.NewReader(`{"status":"CERRADO"}`)))
+	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/folders/42/status", strings.NewReader(`{"status":"CERRADO"}`)))
 	if response.Code != 200 || fake.statusID != 42 || fake.statusInput.Status != "CERRADO" || !strings.Contains(response.Body.String(), `"status":"CERRADO"`) {
 		t.Fatal("expediente status update endpoint failed")
 	}
@@ -190,9 +194,9 @@ func TestUpdateExpedienteStatusHTTP(t *testing.T) {
 		path, body string
 		status     int
 	}{
-		{"/expedientes/x/status", `{"status":"ABIERTO"}`, 400},
-		{"/expedientes/0/status", `{"status":"ABIERTO"}`, 400},
-		{"/expedientes/42/status", `{"status":"ABIERTO","extra":true}`, 400},
+		{"/expedientes/x/folders/42/status", `{"status":"ABIERTO"}`, 400},
+		{"/expedientes/0/folders/42/status", `{"status":"ABIERTO"}`, 400},
+		{"/expedientes/42/folders/42/status", `{"status":"ABIERTO","extra":true}`, 400},
 	} {
 		response = httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("PATCH", test.path, strings.NewReader(test.body)))
@@ -202,7 +206,7 @@ func TestUpdateExpedienteStatusHTTP(t *testing.T) {
 	}
 	fake.statusErr = services.ErrExpedienteNotFound
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/999/status", strings.NewReader(`{"status":"CERRADO"}`)))
+	handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/999/folders/42/status", strings.NewReader(`{"status":"CERRADO"}`)))
 	if response.Code != 404 {
 		t.Fatal("missing expediente status update should return 404")
 	}
@@ -217,10 +221,10 @@ func TestListInitTypes(t *testing.T) {
 	}
 }
 
-func TestListExpedienteStatuses(t *testing.T) {
+func TestListFolderStatuses(t *testing.T) {
 	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/expediente-statuses", nil))
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/folder-statuses", nil))
 	if response.Code != 200 || !strings.Contains(response.Body.String(), `"value":"ABIERTO"`) || !strings.Contains(response.Body.String(), `"value":"CERRADO"`) {
 		t.Fatal("expediente status catalog endpoint failed")
 	}
@@ -468,12 +472,33 @@ func TestUpdateExpedienteDescriptionHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		err    error
 		status int
-	}{{services.ErrExpedienteNotFound, 404}, {services.ErrExpedienteClosed, 409}, {errors.New("private database details"), 500}} {
+	}{{services.ErrExpedienteNotFound, 404}, {services.ErrFolderClosed, 409}, {errors.New("private database details"), 500}} {
 		fake.statusErr = tc.err
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/description", strings.NewReader(`{"description":"Texto"}`)))
 		if response.Code != tc.status || strings.Contains(response.Body.String(), "private database details") {
 			t.Fatalf("unexpected error response: %d %s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestRetiredExpedienteStateRoutes(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
+	for _, tc := range []struct{ method, path string }{
+		{"PATCH", "/expedientes/42/status"}, {"PATCH", "/expedientes/42/location"},
+		{"GET", "/expediente-statuses"}, {"GET", "/expediente-locations"},
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))
+		if w.Code != 404 {
+			t.Fatalf("retired route %s still available: %d", tc.path, w.Code)
+		}
+	}
+	for _, path := range []string{"/expedientes/42/folders/0/status", "/expedientes/42/folders/x/status", "/expedientes/42/folders/0/location", "/expedientes/42/folders/x/location"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("PATCH", path, strings.NewReader(`{}`)))
+		if w.Code != 400 {
+			t.Fatalf("invalid folder ID %s: %d", path, w.Code)
 		}
 	}
 }

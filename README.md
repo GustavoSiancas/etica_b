@@ -33,9 +33,9 @@ El contador `expediente_year_counters` genera automáticamente `number`, por eje
 
 La migración `003_expediente_opening_year.up.sql` se aplica al arrancar después de la 002. Cambia el año usado por el trigger, conserva los números existentes y sincroniza los contadores con los números ya asignados para evitar duplicados. No renumera expedientes históricos. Las nuevas inserciones requieren fecha de apertura.
 
-El expediente comienza con `status: ABIERTO` y `location: DIRECCION DE ETICA`. Solo existen los estados `ABIERTO` y `CERRADO`; la ubicación admite `DIRECCION DE ETICA`, `CONSEJO DE ETICA` o `TRIBUNAL DE HONOR`. Consultar opciones con `GET /expediente-statuses` y `GET /expediente-locations`, y actualizar con `PATCH /expedientes/{id}/status` o `/location`.
+El estado y la ubicacion pertenecen a cada carpeta. La migracion `008_folder_state_location.up.sql` copia los valores anteriores a `EXPEDIENTE PRINCIPAL` y elimina esos campos del expediente. Las demas carpetas comienzan en `ABIERTO` y `DIRECCION DE ETICA`. Los catalogos son `GET /folder-statuses` y `GET /folder-locations`; se actualizan mediante `PATCH /expedientes/{expedienteID}/folders/{folderID}/status` o `/location`.
 
-Cerrar mantiene las consultas y permite actualizar la ubicación, pero bloquea con 409 los cambios de secciones, vínculos y documentos, incluidas firmas y confirmaciones de carga. Cambiar la ubicación conserva el estado CERRADO. Un documento compartido queda protegido si cualquiera de sus expedientes está cerrado. Se permite reabrir explícitamente mediante el endpoint de estado. Las herramientas de reset y limpieza de desarrollo mantienen su función administrativa de prueba.
+Cerrar una carpeta conserva las consultas y permite cambiar su ubicacion, pero bloquea con 409 sus secciones, vinculos y documentos, incluidas firmas y confirmaciones de carga. Las otras carpetas siguen siendo independientes. Un documento compartido queda protegido si cualquiera de sus carpetas esta cerrada. Los datos generales del expediente permanecen editables.
 
 ## Contratos
 

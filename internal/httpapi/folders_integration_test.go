@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func verifyFolderMigration(t *testing.T, ctx context.Context, db *gorm.DB) {
@@ -33,6 +34,11 @@ func verifyFolderMigration(t *testing.T, ctx context.Context, db *gorm.DB) {
 			t.Fatal(err)
 		}
 	}
+	for _, migration := range []string{"005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql"} {
+		if err := platform.ApplyUpgradeMigration(ctx, db, filepath.Join("..", "..", "migrations", migration)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	service := services.NewDocumentService(db)
 	folders, err := service.ListFolders(ctx, e)
 	if err != nil || len(folders) != 1 || folders[0].Name != "EXPEDIENTE PRINCIPAL" {
@@ -51,10 +57,11 @@ func verifyFolderMigration(t *testing.T, ctx context.Context, db *gorm.DB) {
 		t.Fatalf("catalog: %+v %v", types, err)
 	}
 	// Use an open expediente even if the retained migration fixture was closed.
-	if err := db.Exec("UPDATE expedientes SET status='ABIERTO' WHERE id=?", e).Error; err != nil {
+	if err := db.Exec("UPDATE expediente_folders SET status='ABIERTO' WHERE expediente_id=?", e).Error; err != nil {
 		t.Fatal(err)
 	}
-	other, err := service.CreateFolder(ctx, e, services.CreateFolderInput{FolderTypeID: types[1].ID})
+	date := &services.DocumentDate{Time: time.Date(2026, 11, 4, 5, 0, 0, 0, time.UTC)}
+	other, err := service.CreateFolder(ctx, e, services.CreateFolderInput{FolderTypeID: types[1].ID, OpeningDate: date})
 	if err != nil {
 		t.Fatal(err)
 	}

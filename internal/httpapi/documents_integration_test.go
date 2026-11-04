@@ -113,7 +113,7 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 		Number    string
 		CreatedAt time.Time
 	}
-	if err := db.Table("expedientes").Where("description='Legacy A'").Take(&retained).Error; err != nil || retained.Number != "9-2020" || retained.CreatedAt.Year() != 2035 {
+	if err := db.Table("expedientes").Where("description='Legacy A'").Take(&retained).Error; err != nil || retained.Number != "9-2020" || retained.CreatedAt.UTC().Year() != 2035 {
 		t.Fatal("003 modified existing number or creation date")
 	}
 	for _, test := range []struct{ date, number string }{{"2020-12-31", "10-2020"}, {"2030-01-01", "1-2030"}, {"2020-01-01", "11-2020"}} {
@@ -186,9 +186,6 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	}
 	var e services.ExpedienteResponse
 	request("POST", "/expedientes", `{"opening_date":"2026-10-30","init_type":"DENUNCIA_DE_PARTE"}`, 201, &e)
-	if e.Status != services.ExpedienteAbierto || e.Location != services.UbicacionDireccion {
-		t.Fatalf("unexpected defaults: %+v", e)
-	}
 	descriptionPath := fmt.Sprintf("/expedientes/%d/description", e.ID)
 	originalNumber, originalOpeningDate := e.Number, e.OpeningDate.Format("2006-01-02")
 	request("PATCH", descriptionPath, `{"description":"  Updated case  "}`, 200, &e)
@@ -396,14 +393,21 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	request("POST", frozenDocPath+"/upload-url", `{"content_type":"application/pdf"}`, 200, &signature)
 	pendingPayload, _ := json.Marshal(map[string]string{"file_url": signature.FileURL})
 	request("POST", fmt.Sprintf("%s/%d/documents/%d", otherBase, child.ID, doc.ID), "", 204, nil)
-	locationPath := fmt.Sprintf("/expedientes/%d/location", e.ID)
-	statusPath := fmt.Sprintf("/expedientes/%d/status", e.ID)
-	request("GET", "/expediente-statuses", "", 200, nil)
-	request("GET", "/expediente-locations", "", 200, nil)
+	var principal services.FolderResponse
+	var caseFolders []services.FolderResponse
+	request("GET", fmt.Sprintf("/expedientes/%d/folders", e.ID), "", 200, &caseFolders)
+	if len(caseFolders) != 1 {
+		t.Fatal("missing principal")
+	}
+	principal = caseFolders[0]
+	locationPath := fmt.Sprintf("/expedientes/%d/folders/%d/location", e.ID, principal.ID)
+	statusPath := fmt.Sprintf("/expedientes/%d/folders/%d/status", e.ID, principal.ID)
+	request("GET", "/folder-statuses", "", 200, nil)
+	request("GET", "/folder-locations", "", 200, nil)
 	for _, location := range []string{services.UbicacionConsejo, services.UbicacionTribunal, services.UbicacionDireccion} {
 		payload, _ := json.Marshal(map[string]string{"location": location})
-		request("PATCH", locationPath, string(payload), 200, &e)
-		if e.Location != location {
+		request("PATCH", locationPath, string(payload), 200, &principal)
+		if principal.Location != location {
 			t.Fatal("location update lost")
 		}
 	}
@@ -412,9 +416,9 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 		payload, _ := json.Marshal(map[string]string{"status": status})
 		request("PATCH", statusPath, string(payload), 400, nil)
 	}
-	request("PATCH", statusPath, `{"status":"CERRADO"}`, 200, &e)
-	request("PATCH", descriptionPath, `{"description":"Blocked"}`, 409, nil)
-	if e.Status != services.ExpedienteCerrado || e.Location != services.UbicacionDireccion {
+	request("PATCH", statusPath, `{"status":"CERRADO"}`, 200, &principal)
+	request("PATCH", descriptionPath, `{"description":"Still editable"}`, 200, nil)
+	if principal.Status != services.FolderCerrado || principal.Location != services.UbicacionDireccion {
 		t.Fatal("status and location must be independent")
 	}
 	var expedientePage services.ExpedienteList
@@ -449,8 +453,8 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	} {
 		request(test.method, test.path, test.body, 409, nil)
 	}
-	request("PATCH", locationPath, `{"location":"CONSEJO DE ETICA"}`, 200, &e)
-	if e.Status != services.ExpedienteCerrado || e.Location != services.UbicacionConsejo {
+	request("PATCH", locationPath, `{"location":"CONSEJO DE ETICA"}`, 200, &principal)
+	if principal.Status != services.FolderCerrado || principal.Location != services.UbicacionConsejo {
 		t.Fatal("closed location update must preserve CERRADO")
 	}
 	request("POST", base, `{"name":"Still blocked","type":"OTROS"}`, 409, nil)
@@ -467,17 +471,17 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := participants.AttachDenunciante(ctx, e.ID, person.ID); !errors.Is(err, services.ErrExpedienteClosed) {
-		t.Fatalf("closed participant mutation: %v", err)
+	if _, err := participants.AttachDenunciante(ctx, e.ID, person.ID); err != nil {
+		t.Fatalf("expediente participants must remain independent of folder state: %v", err)
 	}
-	request("PATCH", statusPath, `{"status":"ABIERTO"}`, 200, &e)
+	request("PATCH", statusPath, `{"status":"ABIERTO"}`, 200, &principal)
 	request("PATCH", frozenPath, `{"name":"Reopened section"}`, 200, nil)
 	request("PATCH", frozenDocPath, `{"name":"Reopened document"}`, 200, nil)
 	// Close during storage verification: the final DB update must recheck state.
 	storageMu.Lock()
 	storedType = "application/pdf"
 	onHead = func() {
-		if _, err := services.NewExpedienteService(db).UpdateStatus(ctx, e.ID, services.UpdateExpedienteStatusInput{Status: services.ExpedienteCerrado}); err != nil {
+		if _, err := services.NewDocumentService(db).UpdateFolderStatus(ctx, e.ID, principal.ID, services.UpdateFolderStatusInput{Status: services.FolderCerrado}); err != nil {
 			t.Error(err)
 		}
 	}

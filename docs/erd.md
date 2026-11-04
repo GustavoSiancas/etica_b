@@ -1,12 +1,14 @@
 # ERD de expedientes y documentos
 
-Esquema actual: `001_initial.up.sql` para bases nuevas y `002_expediente_state_location.up.sql` para añadir ubicación y normalizar estados en instalaciones existentes. La 002 se aplica automáticamente al arrancar. No se ha aplicado a tu base desde esta sesión.
+Esquema actual: migracion inicial y mejoras 002 a 008, aplicadas automaticamente al iniciar. La 008 mueve el estado y la ubicacion a las carpetas.
 
 ## Expedientes, secciones y documentos
 
 ```mermaid
 erDiagram
-    expedientes ||--o{ expediente_section : contiene
+    expedientes ||--o{ expediente_folders : contiene
+    folder_types ||--o{ expediente_folders : clasifica
+    expediente_folders ||--o{ expediente_section : contiene
     expediente_section o|--o{ expediente_section : tiene_subsecciones
     expediente_section ||--o{ expediente_section_documents : agrupa
     documents ||--o{ expediente_section_documents : vincula
@@ -16,9 +18,24 @@ erDiagram
         text description
         date opening_date "Opcional"
         varchar number UK
-        varchar status "ABIERTO o CERRADO; defecto ABIERTO"
-        varchar location "DIRECCION DE ETICA por defecto"
         expediente_init_type_enum init_type "Opcional"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    folder_types {
+        bigint id PK
+        text name UK
+        varchar abbreviation "EP o MC para los tipos iniciales"
+    }
+
+    expediente_folders {
+        bigint id PK
+        bigint expediente_id FK
+        bigint folder_type_id FK
+        timestamptz opening_date
+        varchar status "ABIERTO o CERRADO"
+        varchar location "DIRECCION DE ETICA por defecto"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -26,6 +43,7 @@ erDiagram
     expediente_section {
         bigint id PK
         bigint expediente_id FK
+        bigint expediente_folder_id FK
         bigint expediente_section_parent_id FK "Opcional; padre del mismo expediente"
         text name "Nombre obligatorio"
         text type "Tipo obligatorio, texto libre"
@@ -55,8 +73,8 @@ erDiagram
 - Un documento puede estar en cero o varias secciones, incluso de distintos expedientes: el esquema actual permite esa reutilización.
 - El documento se relaciona con el expediente a través de la sección; no tiene `expediente_id` propio.
 - Nombre, tipo, fecha, orden y color pertenecen a la sección.
-- El estado y la ubicación pertenecen al expediente. Ubicaciones permitidas: `DIRECCION DE ETICA`, `CONSEJO DE ETICA` y `TRIBUNAL DE HONOR`.
-- Un expediente `CERRADO` conserva sus consultas y bloquea cambios de información en la API hasta reabrirse explícitamente. Los documentos compartidos también quedan protegidos si alguno de sus expedientes está cerrado.
+- El estado y la ubicacion pertenecen a cada carpeta. La migracion 008 copia los valores historicos a EXPEDIENTE PRINCIPAL y elimina las columnas del expediente.
+- Una carpeta cerrada protege su contenido; un documento compartido se bloquea si alguna de sus carpetas esta cerrada.
 - `expediente_section_parent_id = NULL` identifica una raíz. Cada sección puede tener hijas sin límite fijo de profundidad, siempre dentro del mismo expediente y sin ciclos.
 - `sort_order` ordena entre hermanas; los empates se resuelven por ID. Para borrar una sección con hijas primero deben moverse o eliminarse sus hijas.
 - Eliminar una sección elimina sus vínculos y conserva los documentos. Para eliminar un documento primero deben retirarse sus vínculos.

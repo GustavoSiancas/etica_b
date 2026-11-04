@@ -7,20 +7,20 @@ import (
 )
 
 func TestExpedienteStateAndLocationValidation(t *testing.T) {
-	service := NewExpedienteService(nil)
+	service := NewDocumentService(nil)
 	for _, status := range []string{"OPEN", "CLOSED", "IN_PROGRESS", "OTHER", ""} {
-		if _, err := service.UpdateStatus(context.Background(), 1, UpdateExpedienteStatusInput{Status: status}); !errors.Is(err, ErrExpedienteInvalid) {
+		if _, err := service.UpdateFolderStatus(context.Background(), 1, 1, UpdateFolderStatusInput{Status: status}); !errors.Is(err, ErrFolderInvalid) {
 			t.Fatalf("invalid status accepted: %q %v", status, err)
 		}
 	}
 	for _, location := range []string{"OTHER", "", "DIRECCION_DE_ETICA"} {
-		if _, err := service.UpdateLocation(context.Background(), 1, UpdateExpedienteLocationInput{Location: location}); !errors.Is(err, ErrExpedienteInvalid) {
+		if _, err := service.UpdateFolderLocation(context.Background(), 1, 1, UpdateFolderLocationInput{Location: location}); !errors.Is(err, ErrFolderInvalid) {
 			t.Fatalf("invalid location accepted: %q %v", location, err)
 		}
 	}
 	statuses, _ := service.ListStatuses(context.Background())
 	locations, _ := service.ListLocations(context.Background())
-	if len(statuses) != 2 || statuses[0].Value != ExpedienteAbierto || statuses[1].Value != ExpedienteCerrado || len(locations) != 3 {
+	if len(statuses) != 2 || statuses[0].Value != FolderAbierto || statuses[1].Value != FolderCerrado || len(locations) != 3 {
 		t.Fatal("incorrect catalogs")
 	}
 }

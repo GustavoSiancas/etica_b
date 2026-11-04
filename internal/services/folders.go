@@ -19,6 +19,8 @@ type FolderTypeResponse struct {
 	Name         string  `json:"name"`
 }
 type FolderResponse struct {
+	Status       string     `json:"status"`
+	Location     string     `json:"location"`
 	Abbreviation *string    `json:"abbreviation"`
 	OpeningDate  *time.Time `json:"opening_date"`
 	ID           int64      `json:"id"`
@@ -29,6 +31,8 @@ type FolderResponse struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 type CreateFolderInput struct {
+	Status       *string       `json:"status"`
+	Location     *string       `json:"location"`
 	FolderTypeID int64         `json:"folder_type_id"`
 	OpeningDate  *DocumentDate `json:"opening_date"`
 }
@@ -60,6 +64,16 @@ func (s *DocumentService) ListFolders(ctx context.Context, expedienteID int64) (
 func (s *DocumentService) CreateFolder(ctx context.Context, expedienteID int64, input CreateFolderInput) (FolderResponse, error) {
 	if expedienteID <= 0 || input.FolderTypeID <= 0 {
 		return FolderResponse{}, ErrSectionInvalid
+	}
+	status, location := FolderAbierto, UbicacionDireccion
+	if input.Status != nil {
+		status = strings.TrimSpace(*input.Status)
+	}
+	if input.Location != nil {
+		location = strings.TrimSpace(*input.Location)
+	}
+	if !validFolderStatus(status) || !validLocation(location) {
+		return FolderResponse{}, ErrFolderInvalid
 	}
 	var row models.ExpedienteFolder
 	var kind models.FolderType
@@ -100,13 +114,13 @@ func (s *DocumentService) CreateFolder(ctx context.Context, expedienteID int64, 
 			}
 			openingDate = utcFolderDate(&input.OpeningDate.Time)
 		}
-		row = models.ExpedienteFolder{ExpedienteID: expedienteID, FolderTypeID: input.FolderTypeID, OpeningDate: openingDate}
+		row = models.ExpedienteFolder{ExpedienteID: expedienteID, FolderTypeID: input.FolderTypeID, OpeningDate: openingDate, Status: status, Location: location}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
 		}
 		return tx.Where("expediente_id = ? AND folder_type_id = ?", expedienteID, input.FolderTypeID).First(&row).Error
 	})
-	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
+	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Status: row.Status, Location: row.Location, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
 }
 func (s *DocumentService) ListFolderSections(ctx context.Context, expedienteID, folderID int64) ([]SectionResponse, error) {
 	if expedienteID <= 0 || folderID <= 0 {
@@ -179,4 +193,117 @@ func normalizeFolderAbbreviation(value string) (string, error) {
 		}
 	}
 	return strings.ToUpper(value), nil
+}
+
+var ErrFolderInvalid = errors.New("invalid folder fields")
+var ErrFolderNotFound = errors.New("folder not found in expediente")
+
+type UpdateFolderStatusInput struct {
+	Status string `json:"status"`
+}
+type UpdateFolderLocationInput struct {
+	Location string `json:"location"`
+}
+
+func validFolderStatus(value string) bool {
+	return value == FolderAbierto || value == FolderCerrado
+}
+
+// Locking the folder serializes closing it against all content mutations.
+func lockFolder(tx *gorm.DB, expedienteID, folderID int64, writable bool) (models.ExpedienteFolder, error) {
+	var row models.ExpedienteFolder
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("expediente_id = ?", expedienteID).First(&row, folderID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrFolderNotFound
+	}
+	if err == nil && writable && row.Status == FolderCerrado {
+		return row, ErrFolderClosed
+	}
+	return row, err
+}
+
+func (s *DocumentService) UpdateFolderStatus(ctx context.Context, expedienteID, folderID int64, input UpdateFolderStatusInput) (FolderResponse, error) {
+	value := strings.TrimSpace(input.Status)
+	if expedienteID <= 0 || folderID <= 0 || !validFolderStatus(value) {
+		return FolderResponse{}, ErrFolderInvalid
+	}
+	return s.updateFolderField(ctx, expedienteID, folderID, "status", value)
+}
+func (s *DocumentService) UpdateFolderLocation(ctx context.Context, expedienteID, folderID int64, input UpdateFolderLocationInput) (FolderResponse, error) {
+	value := strings.TrimSpace(input.Location)
+	if expedienteID <= 0 || folderID <= 0 || !validLocation(value) {
+		return FolderResponse{}, ErrFolderInvalid
+	}
+	return s.updateFolderField(ctx, expedienteID, folderID, "location", value)
+}
+func (s *DocumentService) updateFolderField(ctx context.Context, expedienteID, folderID int64, field, value string) (FolderResponse, error) {
+	var row models.ExpedienteFolder
+	var kind models.FolderType
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := requireExpediente(tx, expedienteID, false); err != nil {
+			return err
+		}
+		var err error
+		row, err = lockFolder(tx, expedienteID, folderID, false)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&row).Update(field, value).Error; err != nil {
+			return err
+		}
+		return tx.First(&kind, row.FolderTypeID).Error
+	})
+	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), Status: row.Status, Location: row.Location, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, err
+}
+
+func requireWritableSection(tx *gorm.DB, expedienteID, sectionID int64) error {
+	row, err := getSection(tx, expedienteID, sectionID)
+	if err != nil {
+		return err
+	}
+	_, err = lockFolder(tx, expedienteID, row.ExpedienteFolderID, true)
+	return err
+}
+
+var ErrFolderClosed = errors.New("folder is closed; reopen it before modifying its content")
+
+const (
+	FolderAbierto      = "ABIERTO"
+	FolderCerrado      = "CERRADO"
+	UbicacionDireccion = "DIRECCION DE ETICA"
+	UbicacionConsejo   = "CONSEJO DE ETICA"
+	UbicacionTribunal  = "TRIBUNAL DE HONOR"
+)
+
+type FolderStatusResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+var folderStatuses = []FolderStatusResponse{
+	{Value: FolderAbierto, Label: "Abierto"},
+	{Value: FolderCerrado, Label: "Cerrado"},
+}
+
+type FolderLocationResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+var folderLocations = []FolderLocationResponse{
+	{Value: UbicacionDireccion, Label: "Direccion de Etica"},
+	{Value: UbicacionConsejo, Label: "Consejo de Etica"},
+	{Value: UbicacionTribunal, Label: "Tribunal de Honor"},
+}
+
+func validLocation(value string) bool {
+	return value == UbicacionDireccion || value == UbicacionConsejo || value == UbicacionTribunal
+}
+
+func (s *DocumentService) ListLocations(context.Context) ([]FolderLocationResponse, error) {
+	return append([]FolderLocationResponse(nil), folderLocations...), nil
+}
+
+func (s *DocumentService) ListStatuses(context.Context) ([]FolderStatusResponse, error) {
+	return append([]FolderStatusResponse(nil), folderStatuses...), nil
 }

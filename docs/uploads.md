@@ -64,7 +64,7 @@ async function uploadFile(documentId, file) {
 
 Errores: 400 petición inválida, 404 documento inexistente, 502 objeto no verificable en R2, 500 error interno. Las respuestas no contienen credenciales ni errores SQL.
 
-Solicitar firma o confirmar una carga devuelve 409 si el documento pertenece a algún expediente `CERRADO`. La confirmación vuelve a comprobar el estado al guardar, incluso si se emitió la firma cuando estaba abierto. Una firma ya emitida puede seguir vigente en R2, pero no permite confirmar el enlace mientras el expediente esté cerrado.
+Solicitar firma o confirmar una carga devuelve 409 si el documento pertenece a alguna carpeta `CERRADO`. La confirmacion vuelve a comprobar el estado al guardar, incluso si la firma se emitio antes del cierre. Una firma ya emitida puede seguir vigente en R2, pero no permite confirmar el enlace mientras alguna carpeta propietaria este cerrada.
 
 ## Límites del flujo
 

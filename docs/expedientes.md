@@ -17,7 +17,7 @@ Content-Type: application/json
 
 `opening_date` e `init_type` son obligatorios. La descripción es opcional y se guarda como texto vacío si se omite. Las listas de participantes son opcionales; los IDs deben existir, ser positivos y no repetirse. La creación guarda expediente y asociaciones en una transacción. Los participantes se cargan inicialmente y no existen endpoints para cambiar las asociaciones después.
 
-El estado y la ubicación iniciales siempre son `ABIERTO` y `DIRECCION DE ETICA`. No se aceptan esos campos en la creación.
+La carpeta principal creada automaticamente comienza con `ABIERTO` y `DIRECCION DE ETICA`. El expediente no admite `status` ni `location` en su creacion.
 
 Respuesta 201:
 
@@ -28,14 +28,12 @@ Respuesta 201:
   "description": "Caso de ejemplo",
   "opening_date": "2026-10-30",
   "init_type": "DENUNCIA_DE_PARTE",
-  "status": "ABIERTO",
-  "location": "DIRECCION DE ETICA",
   "created_at": "2026-10-30T15:00:00Z",
   "updated_at": "2026-10-30T15:00:00Z"
 }
 ```
 
-`GET /expedientes?limit=20&offset=0` devuelve `{data,total,limit,offset}` ordenado por creación descendente e ID. `limit` admite 1–100 y `offset` desde cero. Incluye `status` y `location` para cada expediente.
+`GET /expedientes?limit=20&offset=0` devuelve `{data,total,limit,offset}` ordenado por creación descendente e ID. `limit` admite 1–100 y `offset` desde cero. El estado y la ubicacion se consultan en las carpetas del expediente.
 
 Filtros opcionales, combinables con la paginación:
 
@@ -51,58 +49,20 @@ El mismo rango está disponible en los [expedientes por denunciante y denunciado
 
 Ejemplo: `GET /expedientes?status=ABIERTO&location=CONSEJO%20DE%20ETICA&limit=20&offset=0`. `total` cuenta todos los resultados filtrados antes de aplicar `limit` y `offset`. Valores desconocidos o filtros repetidos devuelven 400.
 
-## Estado
+## Estado y ubicacion por carpeta
 
-`GET /expediente-statuses` devuelve exclusivamente:
+El expediente ya no contiene `status` ni `location`. La migracion `008_folder_state_location.up.sql` copia ambos valores historicos a la carpeta llamada `EXPEDIENTE PRINCIPAL` y retira las columnas del expediente. Las demas carpetas existentes comienzan en `ABIERTO` y `DIRECCION DE ETICA`. Los nuevos expedientes crean su carpeta principal con esos mismos valores por defecto.
 
-```json
-[
-  {"value":"ABIERTO","label":"Abierto"},
-  {"value":"CERRADO","label":"Cerrado"}
-]
-```
+- `GET /folder-statuses`: `ABIERTO`, `CERRADO`.
+- `GET /folder-locations`: `DIRECCION DE ETICA`, `CONSEJO DE ETICA`, `TRIBUNAL DE HONOR`.
+- `PATCH /expedientes/{expedienteID}/folders/{folderID}/status`: `{"status":"CERRADO"}`; enviar `ABIERTO` para reabrir.
+- `PATCH /expedientes/{expedienteID}/folders/{folderID}/location`: `{"location":"CONSEJO DE ETICA"}`.
 
-`PATCH /expedientes/{id}/status` cierra o reabre explícitamente:
+Ambos PATCH devuelven 200 con la carpeta actualizada, 400 para valores o IDs invalidos y 404 para expediente inexistente o carpeta ajena/inexistente. Cambiar ubicacion conserva el estado y esta permitido aunque la carpeta este cerrada. Las anteriores rutas de estado y ubicacion del expediente fueron retiradas.
 
-```json
-{"status":"CERRADO"}
-```
+Una carpeta cerrada bloquea con 409 cambios de sus secciones y vinculos. Las otras carpetas siguen siendo independientes. Los documentos compartidos se protegen contra edicion, eliminacion, firma y confirmacion de carga si cualquiera de sus carpetas esta cerrada. Las consultas permanecen disponibles. Cerrar una carpeta no bloquea los datos generales del expediente, sus participantes ni la creacion de carpetas adicionales.
 
-Para reabrir, enviar `{"status":"ABIERTO"}`. El cambio conserva la ubicación. Estados anteriores como OPEN, CLOSED, IN_PROGRESS o cualquier texto libre devuelven 400.
-
-## Ubicación
-
-`GET /expediente-locations` devuelve los valores permitidos:
-
-- `DIRECCION DE ETICA`
-- `CONSEJO DE ETICA`
-- `TRIBUNAL DE HONOR`
-
-`PATCH /expedientes/{id}/location`:
-
-```json
-{"location":"CONSEJO DE ETICA"}
-```
-
-La ubicación es independiente del estado y puede cambiarse con el expediente ABIERTO o CERRADO. Cambiarla conserva el estado y no desbloquea su contenido. Ambos PATCH devuelven el expediente completo actualizado (200); datos inválidos producen 400 y un expediente inexistente 404.
-
-## Cierre y bloqueo de información
-
-Un expediente CERRADO se puede consultar, pero devuelve 409 al intentar:
-
-- Crear, editar, mover, ordenar o eliminar secciones y subsecciones.
-- Crear documentos dentro de sus secciones, vincularlos o desvincularlos.
-- Editar o eliminar documentos vinculados, incluso desde endpoints globales.
-- Solicitar firmas de carga o confirmar enlaces de sus documentos.
-- Agregar asociaciones de participantes desde servicios internos.
-
-Los documentos compartidos se bloquean para edición si cualquiera de sus expedientes está cerrado. Las lecturas siguen disponibles. Un documento independiente sin vínculos puede crearse o editarse porque todavía no pertenece a un expediente; vincularlo a uno cerrado está bloqueado.
-
-Reabrir mediante el endpoint de estado habilita nuevamente las operaciones. Si otro propietario de un documento compartido sigue cerrado, ese documento continúa bloqueado. Las mutaciones se coordinan con locks de base de datos para evitar escrituras simultáneas al cierre. Una firma de carga emitida antes de cerrar puede seguir vigente en R2, pero su confirmación no modifica el documento mientras el expediente esté cerrado.
-
-## Esquema
-
-`001_initial.up.sql` es la única migración consolidada para bases nuevas. Incluye restricciones SQL para los dos estados y las tres ubicaciones. La migraci?n 002 se aplica al arrancar para a?adir ubicaci?n y convertir los estados anteriores en bases existentes; no usar AutoMigrate. Las reglas de cierre se aplican en los servicios de la aplicación; las herramientas de reset y limpieza de desarrollo siguen siendo operaciones administrativas de prueba.
+Los filtros `status` y `location` de `GET /expedientes` y de las listas por participante buscan coincidencias en una misma carpeta; devuelven cada expediente una sola vez. `from` y `to` siguen filtrando la fecha de apertura del expediente.
 
 ## Actualizar descripcion
 
@@ -112,4 +72,4 @@ Reabrir mediante el endpoint de estado habilita nuevamente las operaciones. Si o
 {"description":"Nueva descripcion del expediente"}
 ```
 
-Devuelve 200 con el expediente actualizado y `updated_at` en UTC. El campo es obligatorio, debe ser texto y se recortan los espacios externos. Enviar `""` borra la descripcion; omitirlo, enviar `null`, un ID invalido o campos desconocidos devuelve 400. Devuelve 404 si el expediente no existe y 409 si esta cerrado: primero debe reabrirse.
+Devuelve 200 con el expediente actualizado y `updated_at` en UTC. El campo es obligatorio, debe ser texto y se recortan los espacios externos. Enviar `""` borra la descripcion; omitirlo, enviar `null`, un ID invalido o campos desconocidos devuelve 400. Devuelve 404 si el expediente no existe. El estado de las carpetas no bloquea esta operacion.

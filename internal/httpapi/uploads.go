@@ -136,6 +136,12 @@ func failure(w http.ResponseWriter, err error) {
 	status := 500
 	message := "internal server error"
 	switch {
+	case errors.Is(err, services.ErrFolderInvalid):
+		status = 400
+		message = "invalid folder status, location or identifier"
+	case errors.Is(err, services.ErrFolderNotFound):
+		status = 404
+		message = "folder not found in expediente"
 	case errors.Is(err, services.ErrFolderTypeInvalid):
 		status = 400
 		message = "folder type requires a name of 1 to 255 characters and an abbreviation of 1 to 20 letters or digits"
@@ -169,9 +175,9 @@ func failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, services.ErrDocumentInvalid):
 		status = 400
 		message = "invalid document fields"
-	case errors.Is(err, services.ErrExpedienteClosed):
+	case errors.Is(err, services.ErrFolderClosed):
 		status = http.StatusConflict
-		message = "expediente is CERRADO; reopen it before modifying information"
+		message = "folder is CERRADO; reopen it before modifying its content"
 	case errors.Is(err, services.ErrExpedienteNotFound):
 		status = 404
 		message = "expediente not found"

@@ -80,6 +80,11 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 	apply("006_folder_opening_date.up.sql") // Versioned migration must be safe to rerun.
 	apply("007_folder_type_abbreviation.up.sql")
 	apply("007_folder_type_abbreviation.up.sql")
+	if err := db.Exec("UPDATE expedientes SET status='CERRADO',location='CONSEJO DE ETICA' WHERE id=1").Error; err != nil {
+		t.Fatal(err)
+	}
+	apply("008_folder_state_location.up.sql")
+	apply("008_folder_state_location.up.sql")
 	service := NewDocumentService(db)
 	defaults, err := service.ListFolderTypes(ctx)
 	if err != nil {
@@ -129,12 +134,79 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 			t.Fatalf("backfill: %+v", folder)
 		}
 	}
+	var oldPrincipal FolderResponse
+	for _, folder := range folders {
+		if folder.Name == "EXPEDIENTE PRINCIPAL" {
+			oldPrincipal = folder
+		}
+	}
+	if oldPrincipal.Status != FolderCerrado || oldPrincipal.Location != UbicacionConsejo {
+		t.Fatalf("principal did not inherit state: %+v", oldPrincipal)
+	}
+	// An open sibling remains editable while the principal is closed.
+	section, err := service.CreateSection(ctx, 1, CreateSectionInput{Name: "Open sibling", Type: "OTROS", FolderID: &customFolder.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := service.CreateInSection(ctx, 1, section.ID, CreateDocumentInput{Name: "Shared evidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateSection(ctx, 1, CreateSectionInput{Name: "Closed principal", Type: "OTROS"}); err != ErrFolderClosed {
+		t.Fatalf("closed principal editable: %v", err)
+	}
+	if _, err := service.UpdateFolderStatus(ctx, 1, oldPrincipal.ID, UpdateFolderStatusInput{Status: FolderAbierto}); err != nil {
+		t.Fatal(err)
+	}
+	principalSection, err := service.CreateSection(ctx, 1, CreateSectionInput{Name: "Principal evidence", Type: "OTROS"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AttachDocument(ctx, 1, principalSection.ID, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.UpdateFolderStatus(ctx, 1, oldPrincipal.ID, UpdateFolderStatusInput{Status: FolderCerrado}); err != nil {
+		t.Fatal(err)
+	}
+	newName := "Protected"
+	if _, err := service.Update(ctx, doc.ID, UpdateDocumentInput{Name: &newName}); err != ErrFolderClosed {
+		t.Fatalf("shared document editable: %v", err)
+	}
+	if _, err := service.UpdateSection(ctx, 1, section.ID, UpdateSectionInput{Name: &newName}); err != nil {
+		t.Fatalf("open sibling blocked: %v", err)
+	}
+	changed, err := service.UpdateFolderLocation(ctx, 1, oldPrincipal.ID, UpdateFolderLocationInput{Location: UbicacionTribunal})
+	if err != nil || changed.Status != FolderCerrado || changed.Location != UbicacionTribunal {
+		t.Fatalf("closed location change: %+v %v", changed, err)
+	}
+	if _, err := service.UpdateFolderStatus(ctx, 99999, oldPrincipal.ID, UpdateFolderStatusInput{Status: FolderAbierto}); err != ErrExpedienteNotFound {
+		t.Fatalf("missing expediente: %v", err)
+	}
+	var otherExpediente models.Expediente
+	otherExpediente.Description = "Other"
+	otherDate := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	otherExpediente.OpeningDate = &otherDate
+	if err := db.Create(&otherExpediente).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.UpdateFolderStatus(ctx, otherExpediente.ID, oldPrincipal.ID, UpdateFolderStatusInput{Status: FolderAbierto}); err != ErrFolderNotFound {
+		t.Fatalf("cross-expediente update accepted: %v", err)
+	}
+	page, err := NewExpedienteService(db).List(ctx, 20, 0, ExpedienteFilters{Status: FolderCerrado, Location: UbicacionTribunal})
+	if err != nil || page.Total != 1 || len(page.Data) != 1 || page.Data[0].ID != 1 {
+		t.Fatalf("folder filters: %+v %v", page, err)
+	}
+	// Status and location must come from one folder, not different siblings.
+	page, err = NewExpedienteService(db).List(ctx, 20, 0, ExpedienteFilters{Status: FolderCerrado, Location: UbicacionDireccion})
+	if err != nil || page.Total != 0 {
+		t.Fatalf("cross-folder filter match: %+v %v", page, err)
+	}
 	expediente := models.Expediente{OpeningDate: func() *time.Time { d := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC); return &d }()}
 	if err := db.Create(&expediente).Error; err != nil {
 		t.Fatal(err)
 	}
 	folders, err = service.ListFolders(ctx, expediente.ID)
-	if err != nil || len(folders) != 1 || folders[0].OpeningDate == nil || folders[0].OpeningDate.Format(time.RFC3339) != "2026-11-05T05:00:00Z" {
+	if err != nil || len(folders) != 1 || folders[0].OpeningDate == nil || folders[0].OpeningDate.Format(time.RFC3339) != "2026-11-05T05:00:00Z" || folders[0].Status != FolderAbierto || folders[0].Location != UbicacionDireccion {
 		t.Fatalf("principal trigger: %+v %v", folders, err)
 	}
 	var kind models.FolderType

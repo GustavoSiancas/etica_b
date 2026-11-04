@@ -183,7 +183,7 @@ func (s *DocumentService) Delete(ctx context.Context, id int64) error {
 	})
 }
 
-// Always lock a document before its owner expedientes. Attach/detach uses the
+// Always lock a document before its owner folders. Attach/detach uses the
 // same order, preventing new owners from slipping past a closed-state check.
 func lockDocument(tx *gorm.DB, id int64) (models.Document, error) {
 	var row models.Document
@@ -198,17 +198,17 @@ func lockWritableDocument(tx *gorm.DB, id int64) (models.Document, error) {
 	if err != nil {
 		return row, err
 	}
-	var owners []models.Expediente
+	var owners []models.ExpedienteFolder
 	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(`id IN (
-        SELECT s.expediente_id FROM expediente_section s
+        SELECT s.expediente_folder_id FROM expediente_section s
         JOIN expediente_section_documents l ON l.expediente_section_id=s.id WHERE l.document_id=?)`, id).
 		Order("id ASC").Find(&owners).Error
 	if err != nil {
 		return row, err
 	}
 	for _, owner := range owners {
-		if owner.Status == ExpedienteCerrado {
-			return row, ErrExpedienteClosed
+		if owner.Status == FolderCerrado {
+			return row, ErrFolderClosed
 		}
 	}
 	return row, nil
@@ -216,16 +216,13 @@ func lockWritableDocument(tx *gorm.DB, id int64) (models.Document, error) {
 
 func requireExpediente(tx *gorm.DB, id int64, lock bool) error {
 	var row models.Expediente
-	q := tx.Select("id", "status")
+	q := tx.Select("id")
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
 	err := q.First(&row, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrExpedienteNotFound
-	}
-	if err == nil && lock && row.Status == ExpedienteCerrado {
-		return ErrExpedienteClosed
 	}
 	return err
 }
