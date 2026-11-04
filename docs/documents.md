@@ -114,3 +114,27 @@ La migracion `006_folder_opening_date.up.sql` agrega `opening_date` (`TIMESTAMPT
 ```
 
 Tambien admite `"opening_date":"2026-11-04T14:30:00-05:00"`. La respuesta y `GET /expedientes/{expedienteID}/folders` incluyen `opening_date` en UTC: `2026-11-04T05:00:00Z` para el primer ejemplo. Las horas sin zona se rechazan con 400. La fecha de la carpeta principal se copia al crearla; posteriores cambios al expediente no modifican esa copia.
+
+## Crear tipos de carpeta
+
+`POST /folder-types` permite crear un tipo reutilizable en el catalogo. Por ahora es un endpoint abierto, sin autenticacion ni verificacion de administrador; la autorizacion se incorporara posteriormente.
+
+```json
+{"name":"Expediente especial"}
+```
+
+Respuesta 201:
+
+```json
+{"id":3,"name":"EXPEDIENTE ESPECIAL"}
+```
+
+`name` es obligatorio, de 1 a 255 caracteres; se recortan espacios externos y se normaliza a mayusculas. Nombres vacios o invalidos y campos desconocidos devuelven 400. Un nombre ya existente devuelve 409. `GET /folder-types` incluye los tipos creados.
+
+Para crear una carpeta con ese tipo, enviar a `POST /expedientes/{expedienteID}/folders`:
+
+```json
+{"folder_type_id":3,"opening_date":"2026-11-04"}
+```
+
+Crear el tipo no crea carpetas automaticamente en los expedientes. No requiere una nueva migracion.

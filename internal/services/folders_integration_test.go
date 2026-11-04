@@ -79,8 +79,27 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 	}
 	apply("006_folder_opening_date.up.sql") // Versioned migration must be safe to rerun.
 	service := NewDocumentService(db)
+	custom, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "  expediente especial  "})
+	if err != nil || custom.Name != "EXPEDIENTE ESPECIAL" {
+		t.Fatalf("custom folder type: %+v %v", custom, err)
+	}
+	if _, err := service.CreateFolderType(ctx, CreateFolderTypeInput{Name: "Expediente Especial"}); err != ErrFolderTypeDuplicate {
+		t.Fatalf("duplicate accepted: %v", err)
+	}
+	types, err := service.ListFolderTypes(ctx)
+	if err != nil || len(types) != 3 {
+		t.Fatalf("custom type missing from catalogue: %+v %v", types, err)
+	}
+	var customDate DocumentDate
+	if err := json.Unmarshal([]byte(`"2026-11-04"`), &customDate); err != nil {
+		t.Fatal(err)
+	}
+	customFolder, err := service.CreateFolder(ctx, 1, CreateFolderInput{FolderTypeID: custom.ID, OpeningDate: &customDate})
+	if err != nil || customFolder.Name != custom.Name || customFolder.FolderTypeID != custom.ID {
+		t.Fatalf("custom type not usable: %+v %v", customFolder, err)
+	}
 	folders, err := service.ListFolders(ctx, 1)
-	if err != nil || len(folders) != 2 {
+	if err != nil || len(folders) != 3 {
 		t.Fatalf("folders: %+v %v", folders, err)
 	}
 	for _, folder := range folders {

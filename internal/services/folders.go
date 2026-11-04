@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"etica_back/internal/persistence/models"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type FolderTypeResponse struct {
@@ -132,4 +135,27 @@ func utcFolderDate(date *time.Time) *time.Time {
 	}
 	value := date.UTC()
 	return &value
+}
+
+var ErrFolderTypeInvalid = errors.New("invalid folder type name")
+var ErrFolderTypeDuplicate = errors.New("folder type already exists")
+
+type CreateFolderTypeInput struct {
+	Name string `json:"name"`
+}
+
+func (s *DocumentService) CreateFolderType(ctx context.Context, input CreateFolderTypeInput) (FolderTypeResponse, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, 0) || utf8.RuneCountInString(name) > 255 {
+		return FolderTypeResponse{}, ErrFolderTypeInvalid
+	}
+	row := models.FolderType{Name: strings.ToUpper(name)}
+	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return FolderTypeResponse{}, ErrFolderTypeDuplicate
+		}
+		return FolderTypeResponse{}, err
+	}
+	return FolderTypeResponse{ID: row.ID, Name: row.Name}, nil
 }

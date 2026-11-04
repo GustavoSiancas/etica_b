@@ -1,7 +1,10 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,5 +22,14 @@ func TestFolderOpeningDateInput(t *testing.T) {
 	var invalid CreateFolderInput
 	if err := json.Unmarshal([]byte(`{"folder_type_id":2,"opening_date":"2026-11-04T00:00:00"}`), &invalid); err == nil {
 		t.Fatal("accepted time without timezone")
+	}
+}
+
+func TestCreateFolderTypeValidation(t *testing.T) {
+	service := NewDocumentService(nil)
+	for _, name := range []string{"", "  ", "bad\x00name", strings.Repeat("a", 256), string([]byte{0xff})} {
+		if _, err := service.CreateFolderType(context.Background(), CreateFolderTypeInput{Name: name}); !errors.Is(err, ErrFolderTypeInvalid) {
+			t.Fatalf("invalid name accepted: %q %v", name, err)
+		}
 	}
 }

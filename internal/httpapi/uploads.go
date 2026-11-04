@@ -11,6 +11,7 @@ import (
 )
 
 type RoutesOption struct {
+	AdminAPIToken                string
 	EnableInitialParticipantLoad bool
 	DemoData                     DemoDataAPI
 	DatabaseClear                DatabaseClearAPI
@@ -30,6 +31,7 @@ func Routes(service *services.UploadService, expedientes ExpedienteAPI, document
 	registerSwagger(mux)
 	registerExpedientes(mux, expedientes)
 	registerDocuments(mux, documents)
+	registerFolderTypes(mux, documents)
 	initialLoad := len(options) > 0 && options[0].EnableInitialParticipantLoad
 	registerParticipants(mux, participants, initialLoad)
 	if len(options) > 0 {
@@ -134,6 +136,12 @@ func failure(w http.ResponseWriter, err error) {
 	status := 500
 	message := "internal server error"
 	switch {
+	case errors.Is(err, services.ErrFolderTypeInvalid):
+		status = 400
+		message = "folder type name must contain 1 to 255 characters"
+	case errors.Is(err, services.ErrFolderTypeDuplicate):
+		status = 409
+		message = "folder type already exists"
 	case errors.Is(err, services.ErrParticipantInvalid):
 		status = 400
 		message = "invalid participant name, document type, document number, registration number, identifier or pagination"

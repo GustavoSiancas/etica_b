@@ -1812,6 +1812,55 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Documentos"
+        ],
+        "summary": "Crear tipo de carpeta",
+        "description": "Abierto temporalmente, sin autenticacion ni roles. Normaliza el nombre a mayusculas y recorta espacios externos. El ID devuelto puede enviarse como folder_type_id al crear carpetas.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tipo de carpeta creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderType"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "description": "Ya existe un tipo de carpeta con ese nombre"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        }
       }
     },
     "/expedientes/{expedienteID}/folders": {
