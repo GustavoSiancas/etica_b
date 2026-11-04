@@ -189,6 +189,22 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	if e.Status != services.ExpedienteAbierto || e.Location != services.UbicacionDireccion {
 		t.Fatalf("unexpected defaults: %+v", e)
 	}
+	descriptionPath := fmt.Sprintf("/expedientes/%d/description", e.ID)
+	originalNumber, originalOpeningDate := e.Number, e.OpeningDate.Format("2006-01-02")
+	request("PATCH", descriptionPath, `{"description":"  Updated case  "}`, 200, &e)
+	if e.Description != "Updated case" || e.Number != originalNumber || e.OpeningDate.Format("2006-01-02") != originalOpeningDate {
+		t.Fatal("description update changed other fields or did not trim")
+	}
+	var persistedDescription string
+	if err := db.Table("expedientes").Select("description").Where("id = ?", e.ID).Scan(&persistedDescription).Error; err != nil || persistedDescription != "Updated case" {
+		t.Fatalf("description not persisted: %q %v", persistedDescription, err)
+	}
+	request("PATCH", descriptionPath, `{"description":""}`, 200, &e)
+	if e.Description != "" {
+		t.Fatal("empty description was not stored")
+	}
+	request("PATCH", descriptionPath, `{"description":"bad\u0000text"}`, 400, nil)
+	request("PATCH", "/expedientes/999999/description", `{"description":"Missing"}`, 404, nil)
 	base := fmt.Sprintf("/expedientes/%d/sections", e.ID)
 	var root, child services.SectionResponse
 	request("POST", base, `{"name":"Denuncia","type":"OTROS"}`, 201, &root)
@@ -397,6 +413,7 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 		request("PATCH", statusPath, string(payload), 400, nil)
 	}
 	request("PATCH", statusPath, `{"status":"CERRADO"}`, 200, &e)
+	request("PATCH", descriptionPath, `{"description":"Blocked"}`, 409, nil)
 	if e.Status != services.ExpedienteCerrado || e.Location != services.UbicacionDireccion {
 		t.Fatal("status and location must be independent")
 	}

@@ -103,3 +103,13 @@ Reabrir mediante el endpoint de estado habilita nuevamente las operaciones. Si o
 ## Esquema
 
 `001_initial.up.sql` es la única migración consolidada para bases nuevas. Incluye restricciones SQL para los dos estados y las tres ubicaciones. La migraci?n 002 se aplica al arrancar para a?adir ubicaci?n y convertir los estados anteriores en bases existentes; no usar AutoMigrate. Las reglas de cierre se aplican en los servicios de la aplicación; las herramientas de reset y limpieza de desarrollo siguen siendo operaciones administrativas de prueba.
+
+## Actualizar descripcion
+
+`PATCH /expedientes/{id}/description`
+
+```json
+{"description":"Nueva descripcion del expediente"}
+```
+
+Devuelve 200 con el expediente actualizado y `updated_at` en UTC. El campo es obligatorio, debe ser texto y se recortan los espacios externos. Enviar `""` borra la descripcion; omitirlo, enviar `null`, un ID invalido o campos desconocidos devuelve 400. Devuelve 404 si el expediente no existe y 409 si esta cerrado: primero debe reabrirse.

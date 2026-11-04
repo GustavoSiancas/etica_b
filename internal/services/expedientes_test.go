@@ -14,3 +14,17 @@ func TestExpedienteValidationBeforeDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateDescriptionValidation(t *testing.T) {
+	service := NewExpedienteService(nil)
+	text := "Text"
+	invalid := "bad\x00text"
+	for _, tc := range []struct {
+		id          int64
+		description *string
+	}{{0, &text}, {-1, &text}, {1, nil}, {1, &invalid}} {
+		if _, err := service.UpdateDescription(context.Background(), tc.id, UpdateExpedienteDescriptionInput{Description: tc.description}); !errors.Is(err, ErrExpedienteInvalid) {
+			t.Fatalf("invalid description accepted: %v", err)
+		}
+	}
+}

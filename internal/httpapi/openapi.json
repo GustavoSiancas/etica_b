@@ -647,6 +647,60 @@
         }
       }
     },
+    "/expedientes/{id}/description": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Actualizar descripcion del expediente",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpedienteId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "description"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expediente actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expediente"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "El expediente esta cerrado; debe reabrirse antes de modificarlo."
+          }
+        },
+        "description": "Actualiza la descripcion de un expediente abierto. Recorta espacios externos. Una cadena vacia borra la descripcion. No acepta null ni campos adicionales."
+      }
+    },
     "/expedientes/{id}/status": {
       "patch": {
         "tags": [

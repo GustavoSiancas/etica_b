@@ -12,17 +12,19 @@ import (
 )
 
 type fakeExpedientes struct {
-	participantID   int64
-	participantRole string
-	participantErr  error
-	filters         services.ExpedienteFilters
-	locationInput   services.UpdateExpedienteLocationInput
-	locationID      int64
-	createErr       error
-	limit, offset   int
-	statusInput     services.UpdateExpedienteStatusInput
-	statusID        int64
-	statusErr       error
+	descriptionID    int64
+	descriptionInput services.UpdateExpedienteDescriptionInput
+	participantID    int64
+	participantRole  string
+	participantErr   error
+	filters          services.ExpedienteFilters
+	locationInput    services.UpdateExpedienteLocationInput
+	locationID       int64
+	createErr        error
+	limit, offset    int
+	statusInput      services.UpdateExpedienteStatusInput
+	statusID         int64
+	statusErr        error
 }
 type fakeDocuments struct {
 	DocumentAPI
@@ -426,6 +428,52 @@ func TestOpeningDateFiltersHTTP(t *testing.T) {
 			if w.Code != 400 {
 				t.Fatalf("invalid range on %s%s: %d", path, query, w.Code)
 			}
+		}
+	}
+}
+
+func (f *fakeExpedientes) UpdateDescription(_ context.Context, id int64, input services.UpdateExpedienteDescriptionInput) (services.ExpedienteResponse, error) {
+	f.descriptionID, f.descriptionInput = id, input
+	if input.Description == nil {
+		return services.ExpedienteResponse{}, services.ErrExpedienteInvalid
+	}
+	return services.ExpedienteResponse{ID: id, Description: *input.Description}, f.statusErr
+}
+
+func TestUpdateExpedienteDescriptionHTTP(t *testing.T) {
+	fake := &fakeExpedientes{}
+	handler := Routes(nil, fake, &fakeDocuments{}, &fakeParticipants{})
+	for _, tc := range []struct {
+		path, body string
+		status     int
+	}{
+		{"/expedientes/42/description", `{"description":"Nueva descripcion"}`, 200},
+		{"/expedientes/42/description", `{"description":""}`, 200},
+		{"/expedientes/x/description", `{"description":"Texto"}`, 400},
+		{"/expedientes/0/description", `{"description":"Texto"}`, 400},
+		{"/expedientes/42/description", `{}`, 400},
+		{"/expedientes/42/description", `{"description":null}`, 400},
+		{"/expedientes/42/description", `{"description":42}`, 400},
+		{"/expedientes/42/description", `{"description":"Texto","status":"CERRADO"}`, 400},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("PATCH", tc.path, strings.NewReader(tc.body)))
+		if response.Code != tc.status {
+			t.Errorf("%s %s got %d: %s", tc.path, tc.body, response.Code, response.Body.String())
+		}
+		if tc.status == 200 && (fake.descriptionID != 42 || !strings.Contains(response.Body.String(), `"description":`)) {
+			t.Fatal("description not forwarded or returned")
+		}
+	}
+	for _, tc := range []struct {
+		err    error
+		status int
+	}{{services.ErrExpedienteNotFound, 404}, {services.ErrExpedienteClosed, 409}, {errors.New("private database details"), 500}} {
+		fake.statusErr = tc.err
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("PATCH", "/expedientes/42/description", strings.NewReader(`{"description":"Texto"}`)))
+		if response.Code != tc.status || strings.Contains(response.Body.String(), "private database details") {
+			t.Fatalf("unexpected error response: %d %s", response.Code, response.Body.String())
 		}
 	}
 }

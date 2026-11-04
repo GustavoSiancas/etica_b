@@ -338,3 +338,33 @@ func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	}
 	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, Status: e.Status, Location: e.Location, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
 }
+
+// UpdateExpedienteDescriptionInput requires an explicit string; empty clears it.
+type UpdateExpedienteDescriptionInput struct {
+	Description *string `json:"description"`
+}
+
+func (s *ExpedienteService) UpdateDescription(ctx context.Context, id int64, input UpdateExpedienteDescriptionInput) (ExpedienteResponse, error) {
+	if id <= 0 || input.Description == nil {
+		return ExpedienteResponse{}, ErrExpedienteInvalid
+	}
+	description := strings.TrimSpace(*input.Description)
+	if !utf8.ValidString(description) || strings.ContainsRune(description, 0) {
+		return ExpedienteResponse{}, ErrExpedienteInvalid
+	}
+	var row models.Expediente
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, id).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrExpedienteNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if row.Status == ExpedienteCerrado {
+			return ErrExpedienteClosed
+		}
+		return tx.Model(&row).Update("description", description).Error
+	})
+	return expedienteResponse(row), err
+}
