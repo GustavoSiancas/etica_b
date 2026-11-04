@@ -104,6 +104,6 @@ func (s *UploadService) Confirm(ctx context.Context, id int64, fileURL string) e
 		if _, err := lockWritableDocument(tx, id); err != nil {
 			return err
 		}
-		return tx.Model(&models.Document{}).Where("id = ?", id).Updates(map[string]any{"file_url": fileURL, "updated_at": time.Now()}).Error
+		return tx.Model(&models.Document{}).Where("id = ?", id).Updates(map[string]any{"file_url": fileURL, "updated_at": time.Now().UTC()}).Error
 	})
 }

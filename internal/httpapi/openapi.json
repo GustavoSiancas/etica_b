@@ -2156,6 +2156,12 @@
             "format": "uri",
             "nullable": true,
             "description": "Optional HTTPS URL; null clears it."
+          },
+          "document_date": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional document date. Input: YYYY-MM-DD (midnight in Peru, UTC-05:00) or RFC3339 with timezone. Output: UTC RFC3339. PATCH null clears the value; omitted preserves it.",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2}))?$"
           }
         }
       },
@@ -2184,6 +2190,12 @@
           },
           "updated_at": {
             "type": "string",
+            "format": "date-time"
+          },
+          "document_date": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional document date. Input: YYYY-MM-DD (midnight in Peru, UTC-05:00) or RFC3339 with timezone. Output: UTC RFC3339. PATCH null clears the value; omitted preserves it.",
             "format": "date-time"
           }
         }
@@ -2373,6 +2385,12 @@
             "format": "uri",
             "nullable": true,
             "description": "Optional HTTPS URL; null clears it."
+          },
+          "document_date": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional document date. Input: YYYY-MM-DD (midnight in Peru, UTC-05:00) or RFC3339 with timezone. Output: UTC RFC3339. PATCH null clears the value; omitted preserves it.",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2}))?$"
           }
         }
       },

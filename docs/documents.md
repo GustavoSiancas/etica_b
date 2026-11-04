@@ -43,7 +43,7 @@ Un PATCH vacío devuelve 400. DELETE devuelve 409 si existen hijas: primero debe
 | POST | `/documents` | Crea documento independiente (201) |
 | GET | `/documents?limit=20&offset=0` | Lista paginada (200) |
 | GET | `/documents/{id}` | Consulta documento (200) |
-| PATCH | `/documents/{id}` | Cambia nombre o enlace (200) |
+| PATCH | `/documents/{id}` | Cambia nombre, enlace o fecha (200) |
 | DELETE | `/documents/{id}` | Elimina documento sin vínculos (204) |
 | GET | `/expedientes/{id}/documents` | Documentos únicos de todas las secciones del expediente (200) |
 
@@ -54,6 +54,22 @@ Un PATCH vacío devuelve 400. DELETE devuelve 409 si existen hijas: primero debe
 `name` es obligatorio, no vacío y admite hasta 255 caracteres. `file_url` es una URL HTTPS opcional. La respuesta incluye ID, nombre, enlace y auditoría. PATCH con `file_url: null` limpia el enlace; campos omitidos conservan su valor. Cambiar un documento compartido afecta a todas las secciones donde se consulta. DELETE devuelve 409 si el documento sigue vinculado a alguna sección. Eliminar el registro no elimina archivos de R2.
 
 La lista global devuelve `{data,total,limit,offset}`, ordenada por creación descendente e ID. `limit` acepta de 1 a 100 y `offset` desde cero. La lista del expediente devuelve un array ordenado por creación ascendente e ID, sin duplicar documentos vinculados a varias secciones.
+
+### Fechas de documentos y UTC
+
+`document_date` es opcional en `POST /documents`, en la creacion dentro de una seccion y en `PATCH /documents/{id}`.
+
+```json
+{"name":"Documento.pdf","document_date":"2026-11-04"}
+```
+
+Una fecha `YYYY-MM-DD` representa las 00:00 de Peru (UTC-05:00): el ejemplo se guarda y devuelve como `2026-11-04T05:00:00Z`. Tambien admite RFC3339 con zona: `2026-11-04T14:30:00-05:00` se devuelve como `2026-11-04T19:30:00Z`. Las horas sin zona se rechazan con 400.
+
+En PATCH, omitir `document_date` conserva su valor; `null` lo borra. Los documentos existentes mantienen `null`: no se infiere su fecha a partir de la creacion o de su seccion.
+
+Los instantes usan `TIMESTAMPTZ` en PostgreSQL y UTC (`Z`) en las respuestas, incluidos `created_at` y `updated_at` de todos los recursos. `created_at` registra la creacion del registro; `document_date` es proporcionado por el cliente y no se asigna automaticamente al subir un archivo. Las fechas de calendario `opening_date` del expediente y `document_date` de la seccion conservan `YYYY-MM-DD`.
+
+La migracion `005_document_date.up.sql` se aplica automaticamente al iniciar el backend.
 
 ## Documentos de una sección
 
@@ -76,7 +92,7 @@ Se mantienen `POST /documents/{id}/upload-url` y `PATCH /documents/{id}/file-url
 
 ## Cambios de contrato
 
-Se retiraron `/escritos` y todas sus rutas, `/document-stages` y `POST /expedientes/{id}/documents`. Ya no se reciben `title`, `stage`, `type`, `status` ni `document_date` en el documento. Los campos desconocidos se rechazan con 400. Los participantes se siguen consultando desde el expediente.
+Se retiraron `/escritos` y todas sus rutas, `/document-stages` y `POST /expedientes/{id}/documents`. Ya no se reciben `title`, `stage`, `type`, `status` en el documento. Los campos desconocidos se rechazan con 400. Los participantes se siguen consultando desde el expediente.
 
 Los IDs inválidos devuelven 400; expedientes, secciones, documentos o vínculos inexistentes devuelven 404. Las rutas de sección verifican siempre que la sección pertenezca al expediente indicado.
 

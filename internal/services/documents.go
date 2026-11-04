@@ -31,19 +31,22 @@ func (o *Optional[T]) UnmarshalJSON(data []byte) error {
 }
 
 type CreateDocumentInput struct {
-	Name    string  `json:"name"`
-	FileURL *string `json:"file_url"`
+	DocumentDate *DocumentDate `json:"document_date"`
+	Name         string        `json:"name"`
+	FileURL      *string       `json:"file_url"`
 }
 type UpdateDocumentInput struct {
-	Name    *string          `json:"name"`
-	FileURL Optional[string] `json:"file_url"`
+	DocumentDate Optional[DocumentDate] `json:"document_date"`
+	Name         *string                `json:"name"`
+	FileURL      Optional[string]       `json:"file_url"`
 }
 type DocumentResponse struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	FileURL   *string   `json:"file_url"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	DocumentDate *time.Time `json:"document_date"`
+	ID           int64      `json:"id"`
+	Name         string     `json:"name"`
+	FileURL      *string    `json:"file_url"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 type DocumentPage struct {
 	Data   []DocumentResponse `json:"data"`
@@ -73,10 +76,20 @@ func cleanDocument(input CreateDocumentInput) (models.Document, error) {
 		}
 		fileURL = &value
 	}
-	return models.Document{Name: name, FileURL: fileURL}, nil
+	var date *time.Time
+	if input.DocumentDate != nil {
+		value := input.DocumentDate.UTC()
+		date = &value
+	}
+	return models.Document{Name: name, FileURL: fileURL, DocumentDate: date}, nil
 }
 func documentResponse(d models.Document) DocumentResponse {
-	return DocumentResponse{ID: d.ID, Name: d.Name, FileURL: d.FileURL, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt}
+	var date *time.Time
+	if d.DocumentDate != nil {
+		value := d.DocumentDate.UTC()
+		date = &value
+	}
+	return DocumentResponse{ID: d.ID, Name: d.Name, FileURL: d.FileURL, DocumentDate: date, CreatedAt: d.CreatedAt.UTC(), UpdatedAt: d.UpdatedAt.UTC()}
 }
 func (s *DocumentService) Create(ctx context.Context, input CreateDocumentInput) (DocumentResponse, error) {
 	row, err := cleanDocument(input)
@@ -116,10 +129,18 @@ func (s *DocumentService) List(ctx context.Context, limit, offset int) (Document
 	return page, nil
 }
 func (s *DocumentService) Update(ctx context.Context, id int64, input UpdateDocumentInput) (DocumentResponse, error) {
-	if id <= 0 || (input.Name == nil && !input.FileURL.Set) {
+	if id <= 0 || (input.Name == nil && !input.FileURL.Set && !input.DocumentDate.Set) {
 		return DocumentResponse{}, ErrDocumentInvalid
 	}
 	updates := map[string]any{}
+	if input.DocumentDate.Set {
+		var date *time.Time
+		if input.DocumentDate.Value != nil {
+			value := input.DocumentDate.Value.UTC()
+			date = &value
+		}
+		updates["document_date"] = date
+	}
 	if input.Name != nil {
 		row, err := cleanDocument(CreateDocumentInput{Name: *input.Name})
 		if err != nil {

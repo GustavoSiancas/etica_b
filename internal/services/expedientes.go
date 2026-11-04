@@ -336,5 +336,5 @@ func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	if e.OpeningDate != nil {
 		openingDate = &Date{Time: *e.OpeningDate}
 	}
-	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, Status: e.Status, Location: e.Location, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, Status: e.Status, Location: e.Location, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
 }

@@ -218,7 +218,24 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	request("POST", otherBase, fmt.Sprintf(`{"name":"Invalid","type":"OTROS","expediente_section_parent_id":%d}`, root.ID), 400, nil)
 	request("GET", fmt.Sprintf("%s/%d", otherBase, child.ID), "", 404, nil)
 	var doc services.DocumentResponse
-	request("POST", childPath+"/documents", `{"name":"Evidence","file_url":"https://example.com/evidence.pdf"}`, 201, &doc)
+	request("POST", childPath+"/documents", `{"name":"Evidence","file_url":"https://example.com/evidence.pdf","document_date":"2026-11-04"}`, 201, &doc)
+	if doc.DocumentDate == nil || doc.DocumentDate.Format(time.RFC3339) != "2026-11-04T05:00:00Z" {
+		t.Fatalf("document date not persisted as UTC: %+v", doc)
+	}
+	docDatePath := fmt.Sprintf("/documents/%d", doc.ID)
+	request("PATCH", docDatePath, `{"document_date":"2026-11-04T23:30:00-05:00"}`, 200, &doc)
+	if doc.DocumentDate == nil || doc.DocumentDate.Format(time.RFC3339) != "2026-11-05T04:30:00Z" {
+		t.Fatal("document time not persisted")
+	}
+	request("PATCH", docDatePath, `{"name":"Evidence"}`, 200, &doc)
+	if doc.DocumentDate == nil {
+		t.Fatal("omitted date was cleared")
+	}
+	request("PATCH", docDatePath, `{"document_date":"2026-02-30"}`, 400, nil)
+	request("PATCH", docDatePath, `{"document_date":null}`, 200, &doc)
+	if doc.DocumentDate != nil {
+		t.Fatal("date was not cleared")
+	}
 	var signature services.UploadSignature
 	request("POST", fmt.Sprintf("/documents/%d/upload-url", doc.ID), `{"content_type":"application/pdf"}`, 200, &signature)
 	put, err := http.NewRequest("PUT", signature.UploadURL, bytes.NewBufferString("%PDF-1.7 local fixture"))

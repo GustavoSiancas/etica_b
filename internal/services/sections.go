@@ -55,7 +55,7 @@ func sectionResponse(row models.ExpedienteSection) SectionResponse {
 	if row.DocumentDate != nil {
 		date = &Date{Time: *row.DocumentDate}
 	}
-	return SectionResponse{FolderID: row.ExpedienteFolderID, ID: row.ID, ExpedienteID: row.ExpedienteID, ParentID: row.ExpedienteSectionParentID, Name: row.Name, Type: row.Type, DocumentDate: date, SortOrder: row.SortOrder, ColorHex: row.ColorHex, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return SectionResponse{FolderID: row.ExpedienteFolderID, ID: row.ID, ExpedienteID: row.ExpedienteID, ParentID: row.ExpedienteSectionParentID, Name: row.Name, Type: row.Type, DocumentDate: date, SortOrder: row.SortOrder, ColorHex: row.ColorHex, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}
 }
 func sectionDBError(err error) error {
 	var pg *pgconn.PgError

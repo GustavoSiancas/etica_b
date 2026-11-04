@@ -23,9 +23,10 @@ type Expediente struct {
 }
 
 type Document struct {
-	ID      int64   `gorm:"primaryKey;autoIncrement"`
-	Name    string  `gorm:"type:varchar(255);not null"`
-	FileURL *string `gorm:"type:text"`
+	DocumentDate *time.Time `gorm:"type:timestamptz"`
+	ID           int64      `gorm:"primaryKey;autoIncrement"`
+	Name         string     `gorm:"type:varchar(255);not null"`
+	FileURL      *string    `gorm:"type:text"`
 	Audit
 }
 

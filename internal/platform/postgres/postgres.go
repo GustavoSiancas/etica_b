@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -72,8 +74,15 @@ func DiagnoseMigration(err error) string {
 }
 
 func Open(ctx context.Context, dsn string) (*gorm.DB, *sql.DB, error) {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
+	config, err := pgx.ParseConfig(dsn)
 	if err != nil {
+		return nil, nil, err
+	}
+	config.RuntimeParams["timezone"] = "UTC"
+	sqlPool := stdlib.OpenDB(*config)
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlPool}), &gorm.Config{DisableAutomaticPing: true, NowFunc: func() time.Time { return time.Now().UTC() }, Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		sqlPool.Close()
 		return nil, nil, err
 	}
 	pool, err := db.DB()
