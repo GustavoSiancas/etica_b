@@ -221,7 +221,7 @@
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Busqueda parcial por nombre o numero de documento. Nombre sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "description": "Busqueda parcial por nombre o numero de documento. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -231,7 +231,7 @@
             "name": "name",
             "in": "query",
             "required": false,
-            "description": "Nombre parcial sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -349,7 +349,7 @@
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Busqueda parcial por nombre o numero de documento o colegiatura. Nombre sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "description": "Busqueda parcial por nombre o numero de documento o colegiatura. En nombres ignora mayusculas, tildes, dieresis y diferencia entre n y enie; encuentra coincidencias en cualquier parte del texto y conserva el original.",
             "schema": {
               "type": "string",
               "maxLength": 255
@@ -359,7 +359,7 @@
             "name": "name",
             "in": "query",
             "required": false,
-            "description": "Nombre parcial sin distinguir mayusculas; no elimina acentos. La coincidencia por nombre ignora mayusculas, tildes y diferencia entre n y enie. Jose Munoz coincide con nombres acentuados. Conserva el nombre original.",
+            "description": "Coincidencia parcial en cualquier parte del nombre, incluidos segundos nombres. Ignora mayusculas, tildes, dieresis y diferencia entre n y enie. Conserva el nombre original.",
             "schema": {
               "type": "string",
               "maxLength": 255

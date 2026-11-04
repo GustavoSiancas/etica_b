@@ -71,12 +71,12 @@ Las asociaciones son permanentes, sin estado, fecha de ingreso ni historial. Las
 | limit | Cantidad por pagina, 1 a 100. Predeterminado: 20. |
 | offset | Registros a omitir, desde 0. Predeterminado: 0. |
 | q | Coincidencia parcial por nombre o numero de documento; en denunciados incluye colegiatura. |
-| name | Coincidencia parcial por nombre, sin distinguir mayusculas. |
+| name | Coincidencia en cualquier parte del nombre, sin distinguir mayusculas, tildes ni dieresis. |
 | document_type | Tipo exacto: DNI/RUC/CE para denunciantes, DNI/CE para denunciados. |
 | document_number | Numero exacto, como texto de 1 a 20 digitos. |
 | registration_number | Solo denunciados: colegiatura exacta, entero positivo. |
 
-Los filtros son opcionales, se recortan y se combinan con AND. La busqueda por nombre conserva la distincion de acentos. `q` busca entre sus campos con OR. No repetir un parametro de filtro. Los filtros invalidos devuelven 400.
+Los filtros son opcionales, se recortan y se combinan con AND. La busqueda por nombre ignora tildes, dieresis y mayusculas, tanto en name como en q. `q` busca entre sus campos con OR. No repetir un parametro de filtro. Los filtros invalidos devuelven 400.
 
 Ejemplos:
 
@@ -88,3 +88,5 @@ GET /denunciados?registration_number=12345
 ```
 
 Respuesta: `{"data":[],"total":0,"limit":20,"offset":0}`. `total` cuenta las coincidencias antes de paginar. El orden es ID ascendente; sin coincidencias, data es un arreglo vacio. Los GET por expediente conservan su listado completo de asociaciones sin paginacion.
+
+La normalizacion de nombres tambien admite letras como `?`, `?` y `?`: `alvaro` encuentra `?LVARO` y viceversa. Se comparan tanto letras compuestas como sus equivalentes Unicode descompuestos. La coincidencia puede estar al inicio, en medio o al final: `?name=carlos` encuentra `Juan Carlos Perez`, y `?name=lva` encuentra `Alvaro`. Se conserva el nombre original en las respuestas. No requiere migracion.

@@ -282,6 +282,56 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 			}
 		}
 	}
+	// Accents and diaereses match in either direction, including middle names.
+	for _, name := range []string{
+		"__Unicode__ Mar\u00eda \u00c4LVARO M\u00fcller Pe\u00f1a",
+		"__Unicode__ Mari\u0301a A\u0308LVARO Mu\u0308ller Pen\u0303a",
+		"__Unicode__ Maria Alvaro Muller Pena",
+	} {
+		if err := db.Exec("INSERT INTO denunciantes(name,document_type,document_number) VALUES (?,'DNI','88000999')", name).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("INSERT INTO denunciados(name,document_type,document_number,registration_number) VALUES (?,'DNI','88000999',99900999)", name).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, term := range []string{"alvaro", "\u00c4LVARO", "A\u0308lvaro", "M\u00dcLLER", "muller", "Pe\u00f1a", "PENA", "maria alvaro", "lva"} {
+		for _, filter := range []ParticipantFilters{{Name: term, DocumentNumber: "88000999"}, {Q: term, DocumentNumber: "88000999"}} {
+			for _, role := range []string{"denunciante", "denunciado"} {
+				list := participants.ListDenunciantes
+				if role == "denunciado" {
+					list = participants.ListDenunciados
+				}
+				for _, offset := range []int{0, 1, 3} {
+					rows, total, err := list(ctx, 1, offset, filter)
+					want := 1
+					if offset == 3 {
+						want = 0
+					}
+					if err != nil || total != 3 || len(rows) != want {
+						t.Fatalf("Unicode middle-name %s %q offset %d: total=%d rows=%d err=%v", role, term, offset, total, len(rows), err)
+					}
+					if len(rows) > 0 && !strings.Contains(rows[0].Name, "__Unicode__") {
+						t.Fatal("stored name changed")
+					}
+				}
+			}
+		}
+	}
+	for _, role := range []string{"denunciante", "denunciado"} {
+		list := participants.ListDenunciantes
+		if role == "denunciado" {
+			list = participants.ListDenunciados
+		}
+		rows, total, err := list(ctx, 20, 0, ParticipantFilters{Q: "%", DocumentNumber: "88000999"})
+		if err != nil || total != 0 || len(rows) != 0 {
+			t.Fatalf("wildcard became a name match: %s %v", role, err)
+		}
+		rows, total, err = list(ctx, 20, 0, ParticipantFilters{Q: "88000999", DocumentNumber: "88000999"})
+		if err != nil || total != 3 || len(rows) != 3 {
+			t.Fatalf("document search regressed: %s %v", role, err)
+		}
+	}
 	// Participant-scoped lists combine membership, state/location and paging.
 	scopedComplainant, err := participants.CreateDenunciante(ctx, CreateDenuncianteInput{Name: "Scoped complainant", DocumentType: "DNI", DocumentNumber: "88000001"})
 	if err != nil {

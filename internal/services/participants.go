@@ -93,11 +93,12 @@ type ParticipantFilters struct {
 	RegistrationNumber *int64
 }
 
-// Fold Spanish diacritics on both operands without requiring an extension or
-// changing stored names. Removing combining marks also handles decomposed text.
+// Unicode NFD separates accents and diaereses from Latin letters before
+// removing combining marks. Fold both operands and match anywhere in the name.
+// Stored spelling is preserved, and no PostgreSQL extension is needed.
 const participantNameMatch = `strpos(
-    regexp_replace(translate(lower(name), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunaeiouun'), U&'[\0300-\036f]', '', 'g'),
-    regexp_replace(translate(lower(?), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunaeiouun'), U&'[\0300-\036f]', '', 'g')
+    lower(regexp_replace(normalize(name, NFD), U&'[\0300-\036f]', '', 'g')),
+    lower(regexp_replace(normalize(?, NFD), U&'[\0300-\036f]', '', 'g'))
 ) > 0`
 
 func participantFilterQuery(db *gorm.DB, filters ParticipantFilters, denunciado bool) (*gorm.DB, error) {
