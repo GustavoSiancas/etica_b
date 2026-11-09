@@ -116,6 +116,11 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 	if err := db.Table("expedientes").Where("description='Legacy A'").Take(&retained).Error; err != nil || retained.Number != "9-2020" || retained.CreatedAt.UTC().Year() != 2035 {
 		t.Fatal("003 modified existing number or creation date")
 	}
+	for _, migration := range []string{"004_expediente_folders.up.sql", "005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql", "009_expediente_status_closing_dates.up.sql", "010_expediente_history.up.sql", "011_folder_history_details.up.sql"} {
+		if err := platform.ApplyUpgradeMigration(ctx, db, filepath.Join("..", "..", "migrations", migration)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, test := range []struct{ date, number string }{{"2020-12-31", "10-2020"}, {"2030-01-01", "1-2030"}, {"2020-01-01", "11-2020"}} {
 		parsed, _ := time.Parse("2006-01-02", test.date)
 		row, err := services.NewExpedienteService(db).Create(ctx, services.CreateExpedienteInput{OpeningDate: &services.Date{Time: parsed}, InitType: "DENUNCIA_DE_OFICIO"})
@@ -127,7 +132,7 @@ func TestSectionDocumentFlowPostgres(t *testing.T) {
 		t.Fatal("new expediente without opening date accepted")
 	}
 	verifyFolderMigration(t, ctx, db)
-	if err := db.Exec("DELETE FROM expediente_folders; DELETE FROM expedientes; DELETE FROM expediente_year_counters").Error; err != nil {
+	if err := db.Exec("DELETE FROM expediente_history; DELETE FROM expediente_folders; DELETE FROM expedientes; DELETE FROM expediente_year_counters").Error; err != nil {
 		t.Fatal(err)
 	}
 	documents := services.NewDocumentService(db)

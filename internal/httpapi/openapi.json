@@ -2023,7 +2023,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "description": "Actualiza solo la carpeta indicada. Permite reabrir o cambiar la ubicacion de una carpeta cerrada. Devuelve 404 si la carpeta no pertenece al expediente."
+        "description": "Cerrar una carpeta registra la fecha actual. Si era la ultima abierta, tambien cierra el expediente. Repetir el cierre conserva la fecha anterior. Reabrir limpia su fecha de cierre y reabre el expediente."
       }
     },
     "/expedientes/{expedienteID}/folders/{folderID}/location": {
@@ -2145,6 +2145,243 @@
           }
         },
         "description": "Valores permitidos para las carpetas."
+      }
+    },
+    "/expedientes/{expedienteID}/status": {
+      "patch": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Abrir o cerrar un expediente",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ABIERTO",
+                      "CERRADO"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Expediente"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "Cerrar el expediente cierra solo sus carpetas abiertas con la fecha actual, conservando las fechas de las ya cerradas. Reabrir limpia la fecha de cierre del expediente y conserva sus carpetas."
+      }
+    },
+    "/expedientes/{id}/history": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Consultar historial del expediente y sus carpetas",
+        "description": "Eventos desde la instalacion de la migracion 010, ordenados por changed_at e id descendentes. Incluye aperturas, cierres, cambios de descripcion y ubicacion. No expone el JSON interno de auditoria. Fechas en UTC; las fechas de calendario del expediente se representan a medianoche de Peru. folder_id y folder_name son nulos para eventos del expediente.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historial sin datos internos de auditoria",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpedienteHistoryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/expedientes/{id}/folders/{folderID}/history": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Consultar historial de una carpeta",
+        "description": "Eventos de la carpeta, con estado ABIERTO/CERRADO, ubicacion y fechas. Los JSON internos active_folders y content_snapshot nunca se exponen. Valida que la carpeta pertenezca al expediente; devuelve 404 en caso contrario. Los eventos antiguos conservan location nula cuando no se registro la ubicacion historica.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "folderID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historial sin datos internos de auditoria",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpedienteHistoryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/expedientes/{expedienteID}/folders/{folderID}/status/closed": {
+      "get": {
+        "tags": [
+          "Expedientes"
+        ],
+        "summary": "Consultar si cerrar una carpeta cerraria el expediente",
+        "description": "Consulta de solo lectura en una sentencia SQL. No cambia estados, fechas ni historial. Si la carpeta ya esta cerrada devuelve false. El resultado refleja el estado actual y puede cambiar antes del PATCH; el cierre vuelve a comprobarlo dentro de su transaccion. Respuesta Cache-Control: no-store.",
+        "parameters": [
+          {
+            "name": "expedienteID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "folderID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prediccion del cierre",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderCloseStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     }
   },
@@ -2356,6 +2593,18 @@
           "description": {
             "type": "string",
             "description": "Descripcion del expediente, texto libre"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "closing_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
           }
         }
       },
@@ -2920,6 +3169,11 @@
               "CONSEJO DE ETICA",
               "TRIBUNAL DE HONOR"
             ]
+          },
+          "closing_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "required": [
@@ -2991,6 +3245,141 @@
           },
           "label": {
             "type": "string"
+          }
+        }
+      },
+      "ExpedienteHistoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "expediente_id",
+          "folder_id",
+          "folder_name",
+          "event",
+          "status",
+          "opening_date",
+          "closing_date",
+          "changed_at",
+          "location"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expediente_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "folder_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "folder_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "event": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "opening_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closing_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "DIRECCION DE ETICA",
+              "CONSEJO DE ETICA",
+              "TRIBUNAL DE HONOR",
+              null
+            ],
+            "description": "Ubicacion de la carpeta en el momento del evento; nula para expedientes y eventos anteriores a la migracion 011."
+          }
+        }
+      },
+      "ExpedienteHistoryPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpedienteHistoryEntry"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ]
+      },
+      "FolderCloseStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expediente_id",
+          "folder_id",
+          "folder_status",
+          "expediente_status",
+          "will_close_expediente"
+        ],
+        "properties": {
+          "expediente_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "folder_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "folder_status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "expediente_status": {
+            "type": "string",
+            "enum": [
+              "ABIERTO",
+              "CERRADO"
+            ]
+          },
+          "will_close_expediente": {
+            "type": "boolean",
+            "description": "True cuando expediente y carpeta estan abiertos y no hay otras carpetas abiertas."
           }
         }
       }

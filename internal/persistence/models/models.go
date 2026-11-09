@@ -8,6 +8,8 @@ type Audit struct {
 }
 
 type Expediente struct {
+	Status      string     `gorm:"type:varchar(30);not null;default:ABIERTO"`
+	ClosingDate *time.Time `gorm:"type:date"`
 	ID          int64      `gorm:"primaryKey;autoIncrement"`
 	Description string     `gorm:"type:text;not null;default:(-)"`
 	OpeningDate *time.Time `gorm:"type:date"`
@@ -37,6 +39,7 @@ type FolderType struct {
 func (FolderType) TableName() string { return "folder_types" }
 
 type ExpedienteFolder struct {
+	ClosingDate  *time.Time `gorm:"type:timestamptz"`
 	Status       string     `gorm:"type:varchar(30);not null;default:ABIERTO"`
 	Location     string     `gorm:"type:varchar(30);not null;default:DIRECCION DE ETICA"`
 	OpeningDate  *time.Time `gorm:"type:timestamptz"`

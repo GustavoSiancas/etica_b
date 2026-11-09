@@ -9,6 +9,7 @@ import (
 )
 
 type DocumentAPI interface {
+	GetFolderCloseStatus(context.Context, int64, int64) (services.FolderCloseStatusResponse, error)
 	ListAllFolders(context.Context, int, int, services.FolderFilters) (services.FolderPage, error)
 	ListLocations(context.Context) ([]services.FolderLocationResponse, error)
 	ListStatuses(context.Context) ([]services.FolderStatusResponse, error)

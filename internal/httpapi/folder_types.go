@@ -8,6 +8,16 @@ import (
 
 // Catalogue creation is intentionally open until administrator authentication is added.
 func registerFolderTypes(mux *http.ServeMux, service DocumentAPI) {
+	mux.HandleFunc("GET /expedientes/{expedienteID}/folders/{folderID}/status/closed", documentRoute(func(w http.ResponseWriter, r *http.Request, e, _, _ int64) {
+		id, err := parsePositiveID(r.PathValue("folderID"))
+		if err != nil {
+			failure(w, services.ErrFolderInvalid)
+			return
+		}
+		result, err := service.GetFolderCloseStatus(r.Context(), e, id)
+		w.Header().Set("Cache-Control", "no-store")
+		documentResult(w, http.StatusOK, result, err)
+	}))
 	mux.HandleFunc("GET /folder-statuses", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.ListStatuses(r.Context())
 		documentResult(w, 200, result, err)

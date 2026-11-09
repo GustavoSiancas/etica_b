@@ -146,8 +146,8 @@ func TestCreateExpedienteHTTP(t *testing.T) {
 			t.Fatal("exposed database error")
 		}
 		if test.status == 201 {
-			if strings.Contains(response.Body.String(), `"status":`) || strings.Contains(response.Body.String(), `"location":`) {
-				t.Fatal("expediente still owns folder fields")
+			if strings.Contains(response.Body.String(), `"location":`) {
+				t.Fatal("expediente still owns folder location")
 			}
 			var data services.ExpedienteResponse
 			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil || data.ID != 1 || data.InitType == nil || *data.InitType != "DENUNCIA_DE_OFICIO" {
@@ -485,7 +485,7 @@ func TestUpdateExpedienteDescriptionHTTP(t *testing.T) {
 func TestRetiredExpedienteStateRoutes(t *testing.T) {
 	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
 	for _, tc := range []struct{ method, path string }{
-		{"PATCH", "/expedientes/42/status"}, {"PATCH", "/expedientes/42/location"},
+		{"PATCH", "/expedientes/42/location"},
 		{"GET", "/expediente-statuses"}, {"GET", "/expediente-locations"},
 	} {
 		w := httptest.NewRecorder()
@@ -499,6 +499,88 @@ func TestRetiredExpedienteStateRoutes(t *testing.T) {
 		handler.ServeHTTP(w, httptest.NewRequest("PATCH", path, strings.NewReader(`{}`)))
 		if w.Code != 400 {
 			t.Fatalf("invalid folder ID %s: %d", path, w.Code)
+		}
+	}
+}
+
+func (f *fakeExpedientes) UpdateStatus(_ context.Context, id int64, input services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error) {
+	return services.ExpedienteResponse{ID: id, Status: input.Status}, f.statusErr
+}
+
+func TestExpedienteStatusRoute(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("PATCH", "/expedientes/42/status", strings.NewReader(`{"status":"CERRADO"}`)))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"CERRADO"`) {
+		t.Fatalf("status: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func (f *fakeExpedientes) ListHistory(_ context.Context, id int64, limit, offset int) (services.ExpedienteHistoryPage, error) {
+	return services.ExpedienteHistoryPage{Data: []services.ExpedienteHistoryEntry{{ID: 1, ExpedienteID: id, Event: "EXPEDIENTE_ABIERTO", Status: "ABIERTO"}}, Total: 1, Limit: limit, Offset: offset}, f.statusErr
+}
+func TestExpedienteHistoryHTTP(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{{"/expedientes/42/history", 200}, {"/expedientes/x/history", 400}, {"/expedientes/42/history?limit=0", 400}, {"/expedientes/42/history?offset=-1", 400}} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+		if w.Code != tc.status || strings.Contains(w.Body.String(), "active_folders") {
+			t.Fatalf("history: %d %s", w.Code, w.Body.String())
+		}
+	}
+}
+
+func (f *fakeExpedientes) ListFolderHistory(_ context.Context, id, folderID int64, limit, offset int) (services.ExpedienteHistoryPage, error) {
+	location := "CONSEJO DE ETICA"
+	return services.ExpedienteHistoryPage{Data: []services.ExpedienteHistoryEntry{{ID: 1, ExpedienteID: id, FolderID: &folderID, Location: &location, Event: "CARPETA_UBICACION_ACTUALIZADA", Status: "ABIERTO"}}, Total: 1, Limit: limit, Offset: offset}, f.statusErr
+}
+func TestFolderHistoryHTTP(t *testing.T) {
+	handler := Routes(nil, &fakeExpedientes{}, &fakeDocuments{}, &fakeParticipants{})
+	for _, tc := range []struct {
+		path string
+		code int
+	}{{"/expedientes/42/folders/2/history", 200}, {"/expedientes/42/folders/0/history", 400}, {"/expedientes/42/folders/2/history?limit=0", 400}} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+		if w.Code != tc.code || strings.Contains(w.Body.String(), "content_snapshot") || strings.Contains(w.Body.String(), "active_folders") {
+			t.Fatalf("folder history: %d %s", w.Code, w.Body.String())
+		}
+		if tc.code == 200 && !strings.Contains(w.Body.String(), "CONSEJO DE ETICA") {
+			t.Fatal("missing historical location")
+		}
+	}
+}
+
+func (f *fakeDocuments) GetFolderCloseStatus(_ context.Context, e, id int64) (services.FolderCloseStatusResponse, error) {
+	f.expedienteID = e
+	f.statusID = id
+	return services.FolderCloseStatusResponse{ExpedienteID: e, FolderID: id, FolderStatus: "ABIERTO", ExpedienteStatus: "ABIERTO", WillCloseExpediente: true}, f.statusErr
+}
+func TestFolderCloseStatusHTTP(t *testing.T) {
+	fake := &fakeDocuments{}
+	handler := Routes(nil, &fakeExpedientes{}, fake, &fakeParticipants{})
+	for _, tc := range []struct {
+		path string
+		code int
+	}{{"/expedientes/42/folders/7/status/closed", 200}, {"/expedientes/0/folders/7/status/closed", 400}, {"/expedientes/42/folders/x/status/closed", 400}, {"/expedientes/42/folders/0/status/closed", 400}} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+		if w.Code != tc.code {
+			t.Fatalf("close status: %d %s", w.Code, w.Body.String())
+		}
+		if tc.code == 200 && (fake.expedienteID != 42 || fake.statusID != 7 || !strings.Contains(w.Body.String(), `"will_close_expediente":true`) || w.Header().Get("Cache-Control") != "no-store") {
+			t.Fatalf("unexpected preview: %s", w.Body.String())
+		}
+	}
+	for _, err := range []error{services.ErrFolderNotFound, services.ErrExpedienteNotFound} {
+		fake.statusErr = err
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/expedientes/42/folders/7/status/closed", nil))
+		if w.Code != 404 {
+			t.Fatalf("missing: %d", w.Code)
 		}
 	}
 }

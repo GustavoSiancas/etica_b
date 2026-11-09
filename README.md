@@ -33,7 +33,7 @@ El contador `expediente_year_counters` genera automáticamente `number`, por eje
 
 La migración `003_expediente_opening_year.up.sql` se aplica al arrancar después de la 002. Cambia el año usado por el trigger, conserva los números existentes y sincroniza los contadores con los números ya asignados para evitar duplicados. No renumera expedientes históricos. Las nuevas inserciones requieren fecha de apertura.
 
-El estado y la ubicacion pertenecen a cada carpeta. La migracion `008_folder_state_location.up.sql` copia los valores anteriores a `EXPEDIENTE PRINCIPAL` y elimina esos campos del expediente. Las demas carpetas comienzan en `ABIERTO` y `DIRECCION DE ETICA`. Los catalogos son `GET /folder-statuses` y `GET /folder-locations`; se actualizan mediante `PATCH /expedientes/{expedienteID}/folders/{folderID}/status` o `/location`.
+El estado y la ubicacion pertenecen a cada carpeta. La migracion `008_folder_state_location.up.sql` copia los valores anteriores a `EXPEDIENTE PRINCIPAL` y elimina esos campos del expediente. Las demas carpetas comienzan en `ABIERTO` y `DIRECCION DE ETICA`. La migracion `009_expediente_status_closing_dates.up.sql` devuelve al expediente su propio estado y agrega fechas de cierre a expedientes y carpetas. `PATCH /expedientes/{id}/status` cierra las carpetas abiertas conservando las fechas de las ya cerradas; reabrir el expediente solo limpia su propia fecha de cierre. Cerrar la ultima carpeta abierta tambien cierra el expediente. Los catalogos son `GET /folder-statuses` y `GET /folder-locations`; se actualizan mediante `PATCH /expedientes/{expedienteID}/folders/{folderID}/status` o `/location`.
 
 Cerrar una carpeta conserva las consultas y permite cambiar su ubicacion, pero bloquea con 409 sus secciones, vinculos y documentos, incluidas firmas y confirmaciones de carga. Las otras carpetas siguen siendo independientes. Un documento compartido queda protegido si cualquiera de sus carpetas esta cerrada. Los datos generales del expediente permanecen editables.
 
@@ -96,3 +96,8 @@ psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/002_expediente_state_l
 ```
 
 Conserva expedientes, documentos, participantes y numeracion. OPEN e IN_PROGRESS se convierten en ABIERTO; CLOSED se convierte en CERRADO. Las ubicaciones ausentes se inicializan como DIRECCION DE ETICA y las existentes se conservan. Si hay estados personalizados desconocidos o ubicaciones fuera de las opciones permitidas, la transaccion se revierte para permitir corregirlos sin descartar informacion. La aplicacion requiere permisos para modificar esas tablas. No hay reversion automatica de 002 porque la conversion agrupa OPEN e IN_PROGRESS y no puede reconstruir el estado original.
+
+
+La migracion `010_expediente_history.up.sql` agrega el historial interno de expedientes y carpetas. `GET /expedientes/{id}/history?limit=20&offset=0` permite consultar eventos y fechas; el JSONB de carpetas activas se conserva exclusivamente para auditoria y no se incluye en la respuesta. El historial comienza a registrar eventos con esta version. Ver `docs/expedientes.md`.
+
+La migracion `011_folder_history_details.up.sql` agrega la ubicacion historica y una copia JSON interna de secciones, subsecciones y documentos por evento de carpeta. `GET /expedientes/{id}/folders/{folderID}/history` permite consultar estados, ubicaciones y fechas, sin exponer los JSON de auditoria.

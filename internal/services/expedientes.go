@@ -46,6 +46,8 @@ type ExpedienteInitTypeResponse struct {
 	Label string `json:"label"`
 }
 type ExpedienteResponse struct {
+	Status      string    `json:"status"`
+	ClosingDate *Date     `json:"closing_date"`
 	ID          int64     `json:"id"`
 	Description string    `json:"description"`
 	OpeningDate *Date     `json:"opening_date"`
@@ -129,7 +131,15 @@ func (s *ExpedienteService) Create(ctx context.Context, input CreateExpedienteIn
 				return err
 			}
 		}
-		return nil
+		now := time.Now().UTC()
+		var principal models.ExpedienteFolder
+		if err := tx.Where("expediente_id = ?", expediente.ID).First(&principal).Error; err != nil {
+			return err
+		}
+		if err := recordExpedienteHistory(tx, expediente.ID, &principal.ID, "CARPETA_ABIERTA", now); err != nil {
+			return err
+		}
+		return recordExpedienteHistory(tx, expediente.ID, nil, "EXPEDIENTE_ABIERTO", now)
 	})
 	if err != nil {
 		return ExpedienteResponse{}, err
@@ -251,7 +261,11 @@ func expedienteResponse(e models.Expediente) ExpedienteResponse {
 	if e.OpeningDate != nil {
 		openingDate = &Date{Time: *e.OpeningDate}
 	}
-	return ExpedienteResponse{ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
+	var closingDate *Date
+	if e.ClosingDate != nil {
+		closingDate = &Date{Time: *e.ClosingDate}
+	}
+	return ExpedienteResponse{Status: e.Status, ClosingDate: closingDate, ID: e.ID, Description: e.Description, OpeningDate: openingDate, Number: e.Number, InitType: e.InitType, CreatedAt: e.CreatedAt.UTC(), UpdatedAt: e.UpdatedAt.UTC()}
 }
 
 // UpdateExpedienteDescriptionInput requires an explicit string; empty clears it.
@@ -276,7 +290,13 @@ func (s *ExpedienteService) UpdateDescription(ctx context.Context, id int64, inp
 		if err != nil {
 			return err
 		}
-		return tx.Model(&row).Update("description", description).Error
+		if row.Description == description {
+			return nil
+		}
+		if err := tx.Model(&row).Update("description", description).Error; err != nil {
+			return err
+		}
+		return recordExpedienteHistory(tx, id, nil, "EXPEDIENTE_DESCRIPCION_ACTUALIZADA", time.Now().UTC())
 	})
 	return expedienteResponse(row), err
 }

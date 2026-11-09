@@ -19,6 +19,7 @@ type FolderTypeResponse struct {
 	Name         string  `json:"name"`
 }
 type FolderResponse struct {
+	ClosingDate  *time.Time `json:"closing_date"`
 	Status       string     `json:"status"`
 	Location     string     `json:"location"`
 	Abbreviation *string    `json:"abbreviation"`
@@ -53,6 +54,7 @@ func (s *DocumentService) ListFolders(ctx context.Context, expedienteID int64) (
 	rows := []FolderResponse{}
 	err := db.Table("expediente_folders f").Select("f.*, t.name, t.abbreviation").Joins("JOIN folder_types t ON t.id=f.folder_type_id").Where("f.expediente_id = ?", expedienteID).Order("f.id").Scan(&rows).Error
 	for i := range rows {
+		rows[i].ClosingDate = utcFolderDate(rows[i].ClosingDate)
 		rows[i].OpeningDate = utcFolderDate(rows[i].OpeningDate)
 		rows[i].CreatedAt = rows[i].CreatedAt.UTC()
 		rows[i].UpdatedAt = rows[i].UpdatedAt.UTC()
@@ -115,12 +117,22 @@ func (s *DocumentService) CreateFolder(ctx context.Context, expedienteID int64, 
 			openingDate = utcFolderDate(&input.OpeningDate.Time)
 		}
 		row = models.ExpedienteFolder{ExpedienteID: expedienteID, FolderTypeID: input.FolderTypeID, OpeningDate: openingDate, Status: status, Location: location}
+		now := time.Now().UTC()
+		if status == FolderCerrado {
+			row.ClosingDate = &now
+		}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
+			return err
+		}
+		if err := recordExpedienteHistory(tx, expedienteID, &row.ID, statusHistoryEvent(row.Status, true), now); err != nil {
+			return err
+		}
+		if err := syncExpedienteStatus(tx, expedienteID, now); err != nil {
 			return err
 		}
 		return tx.Where("expediente_id = ? AND folder_type_id = ?", expedienteID, input.FolderTypeID).First(&row).Error
 	})
-	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Status: row.Status, Location: row.Location, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
+	return FolderResponse{ClosingDate: utcFolderDate(row.ClosingDate), ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Status: row.Status, Location: row.Location, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, sectionDBError(err)
 }
 func (s *DocumentService) ListFolderSections(ctx context.Context, expedienteID, folderID int64) ([]SectionResponse, error) {
 	if expedienteID <= 0 || folderID <= 0 {
@@ -240,7 +252,7 @@ func (s *DocumentService) updateFolderField(ctx context.Context, expedienteID, f
 	var row models.ExpedienteFolder
 	var kind models.FolderType
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := requireExpediente(tx, expedienteID, false); err != nil {
+		if err := requireExpediente(tx, expedienteID, true); err != nil {
 			return err
 		}
 		var err error
@@ -248,12 +260,36 @@ func (s *DocumentService) updateFolderField(ctx context.Context, expedienteID, f
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(&row).Update(field, value).Error; err != nil {
+		updates := map[string]any{field: value}
+		if field == "status" {
+			if row.Status == value {
+				return tx.First(&kind, row.FolderTypeID).Error
+			}
+			now := time.Now().UTC()
+			updates["closing_date"] = nil
+			if value == FolderCerrado {
+				updates["closing_date"] = now
+			}
+			if err := tx.Model(&row).Updates(updates).Error; err != nil {
+				return err
+			}
+			if err := recordExpedienteHistory(tx, expedienteID, &row.ID, statusHistoryEvent(row.Status, true), now); err != nil {
+				return err
+			}
+			if err := syncExpedienteStatus(tx, expedienteID, now); err != nil {
+				return err
+			}
+			return tx.First(&kind, row.FolderTypeID).Error
+		}
+		if err := tx.Model(&row).Updates(updates).Error; err != nil {
 			return err
 		}
-		return tx.First(&kind, row.FolderTypeID).Error
+		if err := tx.First(&kind, row.FolderTypeID).Error; err != nil {
+			return err
+		}
+		return recordExpedienteHistory(tx, expedienteID, &row.ID, "CARPETA_UBICACION_ACTUALIZADA", time.Now().UTC())
 	})
-	return FolderResponse{ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), Status: row.Status, Location: row.Location, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, err
+	return FolderResponse{ClosingDate: utcFolderDate(row.ClosingDate), ID: row.ID, ExpedienteID: row.ExpedienteID, FolderTypeID: row.FolderTypeID, Name: kind.Name, Abbreviation: kind.Abbreviation, OpeningDate: utcFolderDate(row.OpeningDate), Status: row.Status, Location: row.Location, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}, err
 }
 
 func requireWritableSection(tx *gorm.DB, expedienteID, sectionID int64) error {
@@ -389,6 +425,7 @@ func (s *DocumentService) ListAllFolders(ctx context.Context, limit, offset int,
 			suffix = *row.Abbreviation
 		}
 		row.Denomination = row.ExpedienteNumber + " " + suffix
+		row.ClosingDate = utcFolderDate(row.ClosingDate)
 		row.OpeningDate = utcFolderDate(row.OpeningDate)
 		row.CreatedAt = row.CreatedAt.UTC()
 		row.UpdatedAt = row.UpdatedAt.UTC()

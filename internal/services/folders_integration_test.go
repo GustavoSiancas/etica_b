@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,6 +86,12 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 	}
 	apply("008_folder_state_location.up.sql")
 	apply("008_folder_state_location.up.sql")
+	apply("009_expediente_status_closing_dates.up.sql")
+	apply("009_expediente_status_closing_dates.up.sql")
+	apply("010_expediente_history.up.sql")
+	apply("010_expediente_history.up.sql")
+	apply("011_folder_history_details.up.sql")
+	apply("011_folder_history_details.up.sql")
 	service := NewDocumentService(db)
 	defaults, err := service.ListFolderTypes(ctx)
 	if err != nil {
@@ -311,4 +318,306 @@ func TestFolderOpeningDatePostgres(t *testing.T) {
 	if err != nil || again.ID != folder.ID || again.OpeningDate == nil || !again.OpeningDate.Equal(*folder.OpeningDate) {
 		t.Fatalf("idempotent creation: %+v %v", again, err)
 	}
+	t.Run("folder close preview", func(t *testing.T) {
+		cases := NewExpedienteService(db)
+		e, err := cases.Create(ctx, CreateExpedienteInput{OpeningDate: &Date{Time: time.Now()}, InitType: "DENUNCIA_DE_OFICIO"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		folders, err := service.ListFolders(ctx, e.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		principal := folders[0]
+		before, err := cases.ListHistory(ctx, e.ID, 1, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		preview, err := service.GetFolderCloseStatus(ctx, e.ID, principal.ID)
+		if err != nil || !preview.WillCloseExpediente || preview.FolderID != principal.ID || preview.FolderStatus != FolderAbierto || preview.ExpedienteStatus != FolderAbierto {
+			t.Fatalf("single folder: %+v %v", preview, err)
+		}
+		after, err := cases.ListHistory(ctx, e.ID, 1, 0)
+		if err != nil || after.Total != before.Total {
+			t.Fatalf("preview changed history: %+v %v", after, err)
+		}
+		extra, err := service.CreateFolder(ctx, e.ID, CreateFolderInput{FolderTypeID: kind.ID, OpeningDate: &DocumentDate{Time: time.Now()}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		preview, err = service.GetFolderCloseStatus(ctx, e.ID, principal.ID)
+		if err != nil || preview.WillCloseExpediente {
+			t.Fatalf("two open folders: %+v %v", preview, err)
+		}
+		if _, err := service.UpdateFolderStatus(ctx, e.ID, extra.ID, UpdateFolderStatusInput{Status: FolderCerrado}); err != nil {
+			t.Fatal(err)
+		}
+		preview, err = service.GetFolderCloseStatus(ctx, e.ID, extra.ID)
+		if err != nil || preview.WillCloseExpediente || preview.FolderStatus != FolderCerrado {
+			t.Fatalf("closed target: %+v %v", preview, err)
+		}
+		preview, err = service.GetFolderCloseStatus(ctx, e.ID, principal.ID)
+		if err != nil || !preview.WillCloseExpediente {
+			t.Fatalf("last open: %+v %v", preview, err)
+		}
+		if _, err := service.UpdateFolderStatus(ctx, e.ID, principal.ID, UpdateFolderStatusInput{Status: FolderCerrado}); err != nil {
+			t.Fatal(err)
+		}
+		preview, err = service.GetFolderCloseStatus(ctx, e.ID, principal.ID)
+		if err != nil || preview.WillCloseExpediente || preview.ExpedienteStatus != FolderCerrado {
+			t.Fatalf("closed case: %+v %v", preview, err)
+		}
+		if _, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderAbierto}); err != nil {
+			t.Fatal(err)
+		}
+		preview, err = service.GetFolderCloseStatus(ctx, e.ID, principal.ID)
+		if err != nil || preview.WillCloseExpediente {
+			t.Fatalf("reopened case with closed folders: %+v %v", preview, err)
+		}
+		if _, err := service.GetFolderCloseStatus(ctx, e.ID, 99999999); err != ErrFolderNotFound {
+			t.Fatalf("missing folder: %v", err)
+		}
+		if _, err := service.GetFolderCloseStatus(ctx, expediente.ID, principal.ID); err != ErrFolderNotFound {
+			t.Fatalf("foreign folder: %v", err)
+		}
+		if _, err := service.GetFolderCloseStatus(ctx, 99999999, principal.ID); err != ErrExpedienteNotFound {
+			t.Fatalf("missing case: %v", err)
+		}
+	})
+
+	t.Run("folder location and private content snapshot", func(t *testing.T) {
+		cases := NewExpedienteService(db)
+		e, err := cases.Create(ctx, CreateExpedienteInput{OpeningDate: &Date{Time: time.Now()}, InitType: "DENUNCIA_DE_OFICIO"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		folders, err := service.ListFolders(ctx, e.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		folder := folders[0]
+		root := models.ExpedienteSection{ExpedienteID: e.ID, ExpedienteFolderID: folder.ID, Name: "Section audit", Type: "OTROS", SortOrder: 1}
+		if err := db.Create(&root).Error; err != nil {
+			t.Fatal(err)
+		}
+		child := models.ExpedienteSection{ExpedienteID: e.ID, ExpedienteFolderID: folder.ID, ExpedienteSectionParentID: &root.ID, Name: "Subsection audit", Type: "OTROS", SortOrder: 2}
+		if err := db.Create(&child).Error; err != nil {
+			t.Fatal(err)
+		}
+		doc := models.Document{Name: "Original document"}
+		if err := db.Create(&doc).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&models.ExpedienteSectionDocument{ExpedienteSectionID: child.ID, DocumentID: doc.ID}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.UpdateFolderLocation(ctx, e.ID, folder.ID, UpdateFolderLocationInput{Location: UbicacionConsejo}); err != nil {
+			t.Fatal(err)
+		}
+		history, err := cases.ListFolderHistory(ctx, e.ID, folder.ID, 20, 0)
+		if err != nil || len(history.Data) != 2 || history.Data[0].Location == nil || *history.Data[0].Location != UbicacionConsejo {
+			t.Fatalf("folder location history: %+v %v", history, err)
+		}
+		eventID := history.Data[0].ID
+		var audit struct{ ContentSnapshot string }
+		readSnapshot := func() string {
+			t.Helper()
+			if err := db.Table("expediente_history").Select("content_snapshot::text AS content_snapshot").Where("id = ?", eventID).Take(&audit).Error; err != nil {
+				t.Fatal(err)
+			}
+			return audit.ContentSnapshot
+		}
+		original := readSnapshot()
+		var snapshot struct {
+			SchemaVersion int `json:"schema_version"`
+			Sections      []struct {
+				ID        int64  `json:"id"`
+				ParentID  *int64 `json:"parent_id"`
+				Name      string `json:"name"`
+				Documents []struct {
+					ID   int64  `json:"id"`
+					Name string `json:"name"`
+				} `json:"documents"`
+			} `json:"sections"`
+		}
+		if err := json.Unmarshal([]byte(original), &snapshot); err != nil || snapshot.SchemaVersion != 1 || len(snapshot.Sections) != 2 {
+			t.Fatalf("content snapshot: %s %v", original, err)
+		}
+		section := snapshot.Sections[1]
+		if section.ID != child.ID || section.ParentID == nil || *section.ParentID != root.ID || len(section.Documents) != 1 || section.Documents[0].ID != doc.ID || section.Documents[0].Name != doc.Name {
+			t.Fatalf("lost content relation: %+v", section)
+		}
+		if err := db.Model(&doc).Update("name", "Renamed document").Error; err != nil {
+			t.Fatal(err)
+		}
+		if readSnapshot() != original {
+			t.Fatal("historical snapshot changed")
+		}
+		encoded, err := json.Marshal(history)
+		if err != nil || strings.Contains(string(encoded), "content_snapshot") || strings.Contains(string(encoded), "Original document") || strings.Contains(string(encoded), "active_folders") {
+			t.Fatalf("private data exposed: %s %v", encoded, err)
+		}
+		if _, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderCerrado}); err != nil {
+			t.Fatal(err)
+		}
+		latest, err := cases.ListFolderHistory(ctx, e.ID, folder.ID, 1, 0)
+		if err != nil || latest.Data[0].Event != "CARPETA_CERRADA" || latest.Data[0].Location == nil || *latest.Data[0].Location != UbicacionConsejo {
+			t.Fatalf("cascade history: %+v %v", latest, err)
+		}
+		if _, err := cases.ListFolderHistory(ctx, e.ID, 99999999, 20, 0); err != ErrFolderNotFound {
+			t.Fatalf("missing folder: %v", err)
+		}
+		if _, err := cases.ListFolderHistory(ctx, expediente.ID, folder.ID, 20, 0); err != ErrFolderNotFound {
+			t.Fatalf("foreign folder: %v", err)
+		}
+	})
+
+	t.Run("closure dates and cascade", func(t *testing.T) {
+		cases := NewExpedienteService(db)
+		e, err := cases.Create(ctx, CreateExpedienteInput{OpeningDate: &Date{Time: time.Now()}, InitType: "DENUNCIA_DE_OFICIO"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		folders, err := service.ListFolders(ctx, e.ID)
+		if err != nil || len(folders) != 1 {
+			t.Fatalf("folders: %v %v", folders, err)
+		}
+		principal := folders[0]
+		extra, err := service.CreateFolder(ctx, e.ID, CreateFolderInput{FolderTypeID: kind.ID, OpeningDate: &DocumentDate{Time: time.Now()}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		closed, err := service.UpdateFolderStatus(ctx, e.ID, principal.ID, UpdateFolderStatusInput{Status: FolderCerrado})
+		if err != nil || closed.ClosingDate == nil {
+			t.Fatalf("close principal: %+v %v", closed, err)
+		}
+		old := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+		if err := db.Model(&models.ExpedienteFolder{}).Where("id = ?", principal.ID).Update("closing_date", old).Error; err != nil {
+			t.Fatal(err)
+		}
+		var current models.Expediente
+		if err := db.First(&current, e.ID).Error; err != nil || current.Status != FolderAbierto {
+			t.Fatalf("premature close: %+v %v", current, err)
+		}
+		if _, err := service.UpdateFolderStatus(ctx, e.ID, extra.ID, UpdateFolderStatusInput{Status: FolderCerrado}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.First(&current, e.ID).Error; err != nil || current.Status != FolderCerrado || current.ClosingDate == nil {
+			t.Fatalf("last folder did not close case: %+v %v", current, err)
+		}
+		reopened, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderAbierto})
+		if err != nil || reopened.ClosingDate != nil || reopened.Status != FolderAbierto {
+			t.Fatalf("reopen case: %+v %v", reopened, err)
+		}
+		folders, err = service.ListFolders(ctx, e.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range folders {
+			if f.Status != FolderCerrado || f.ClosingDate == nil {
+				t.Fatalf("case reopened folder: %+v", f)
+			}
+		}
+		opened, err := service.UpdateFolderStatus(ctx, e.ID, extra.ID, UpdateFolderStatusInput{Status: FolderAbierto})
+		if err != nil || opened.ClosingDate != nil {
+			t.Fatalf("reopen folder: %+v %v", opened, err)
+		}
+		result, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderCerrado})
+		if err != nil || result.ClosingDate == nil {
+			t.Fatalf("cascade: %+v %v", result, err)
+		}
+		folders, err = service.ListFolders(ctx, e.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range folders {
+			if f.Status != FolderCerrado || f.ClosingDate == nil {
+				t.Fatalf("cascade missed folder: %+v", f)
+			}
+			if f.ID == principal.ID && !f.ClosingDate.Equal(old) {
+				t.Fatalf("overwrote historical date: %+v", f)
+			}
+		}
+		again, err := service.UpdateFolderStatus(ctx, e.ID, principal.ID, UpdateFolderStatusInput{Status: FolderCerrado})
+		if err != nil || again.ClosingDate == nil || !again.ClosingDate.Equal(old) {
+			t.Fatalf("repeat folder close changed date: %+v %v", again, err)
+		}
+
+		repeated, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderCerrado})
+		if err != nil || repeated.ClosingDate == nil || !repeated.ClosingDate.Equal(result.ClosingDate.Time) {
+			t.Fatalf("repeat close: %+v %v", repeated, err)
+		}
+		for _, id := range []int64{principal.ID, extra.ID} {
+			if _, err := service.UpdateFolderStatus(ctx, e.ID, id, UpdateFolderStatusInput{Status: FolderAbierto}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		failures := make(chan error, 2)
+		for _, id := range []int64{principal.ID, extra.ID} {
+			go func(id int64) {
+				_, err := service.UpdateFolderStatus(ctx, e.ID, id, UpdateFolderStatusInput{Status: FolderCerrado})
+				failures <- err
+			}(id)
+		}
+		for i := 0; i < 2; i++ {
+			if err := <-failures; err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := db.First(&current, e.ID).Error; err != nil || current.Status != FolderCerrado || current.ClosingDate == nil {
+			t.Fatalf("concurrent last closures: %+v %v", current, err)
+		}
+
+		history, err := cases.ListHistory(ctx, e.ID, 100, 0)
+		if err != nil || history.Total < 10 {
+			t.Fatalf("history: %+v %v", history, err)
+		}
+		encoded, err := json.Marshal(history)
+		if err != nil || strings.Contains(string(encoded), "active_folders") {
+			t.Fatalf("audit snapshot exposed: %s %v", encoded, err)
+		}
+		var audit struct{ ActiveFolders string }
+		if err := db.Table("expediente_history").Select("active_folders::text AS active_folders").Where("expediente_id = ? AND folder_id = ? AND event = ?", e.ID, extra.ID, "CARPETA_ABIERTA").Order("id").Take(&audit).Error; err != nil {
+			t.Fatal(err)
+		}
+		var snapshot []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal([]byte(audit.ActiveFolders), &snapshot); err != nil || len(snapshot) != 2 {
+			t.Fatalf("snapshot: %s %v", audit.ActiveFolders, err)
+		}
+		if snapshot[0].ID != principal.ID || snapshot[0].Name == "" || snapshot[1].ID != extra.ID || snapshot[1].Name == "" {
+			t.Fatalf("snapshot identities: %+v", snapshot)
+		}
+		last := history.Data[0]
+		if last.Event != "EXPEDIENTE_CERRADO" || last.FolderID != nil || last.ClosingDate == nil {
+			t.Fatalf("latest event: %+v", last)
+		}
+		if _, err := cases.UpdateStatus(ctx, e.ID, UpdateExpedienteStatusInput{Status: FolderCerrado}); err != nil {
+			t.Fatal(err)
+		}
+		after, err := cases.ListHistory(ctx, e.ID, 1, 0)
+		if err != nil || after.Total != history.Total {
+			t.Fatalf("noop duplicated history: %+v %v", after, err)
+		}
+		// A failed history write must roll back both the folder and expediente changes.
+		if err := db.Exec(`CREATE FUNCTION reject_history_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test history failure'; END; $$;
+ CREATE TRIGGER reject_history_test BEFORE INSERT ON expediente_history FOR EACH ROW EXECUTE FUNCTION reject_history_test()`).Error; err != nil {
+			t.Fatal(err)
+		}
+		_, err = service.UpdateFolderStatus(ctx, e.ID, extra.ID, UpdateFolderStatusInput{Status: FolderAbierto})
+		if dropErr := db.Exec("DROP TRIGGER reject_history_test ON expediente_history; DROP FUNCTION reject_history_test()").Error; dropErr != nil {
+			t.Fatal(dropErr)
+		}
+		if err == nil {
+			t.Fatal("history failure ignored")
+		}
+		var unchanged models.ExpedienteFolder
+		if err := db.First(&unchanged, extra.ID).Error; err != nil || unchanged.Status != FolderCerrado || unchanged.ClosingDate == nil {
+			t.Fatalf("history failure did not rollback: %+v %v", unchanged, err)
+		}
+
+	})
+
 }

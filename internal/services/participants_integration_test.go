@@ -77,7 +77,7 @@ func TestFixedParticipantsPostgres(t *testing.T) {
 		}
 	}
 	apply("migrations/001_initial.up.sql")
-	for _, migration := range []string{"004_expediente_folders.up.sql", "005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql"} {
+	for _, migration := range []string{"004_expediente_folders.up.sql", "005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql", "009_expediente_status_closing_dates.up.sql", "010_expediente_history.up.sql", "011_folder_history_details.up.sql"} {
 		apply("migrations/" + migration)
 	}
 	if err := db.Exec(`INSERT INTO expedientes(description,opening_date,init_type) VALUES ('Flow fixture','2026-01-01','DENUNCIA_DE_OFICIO'); INSERT INTO denunciantes(name,document_type,document_number) VALUES ('Ana','DNI','00000001'); INSERT INTO denunciados(name,document_type,document_number,registration_number) VALUES ('Luis','DNI','00000002',1); INSERT INTO expediente_denunciantes(expediente_id,denunciante_id) VALUES (1,1); INSERT INTO expediente_denunciados(expediente_id,denunciado_id) VALUES (1,1);`).Error; err != nil {

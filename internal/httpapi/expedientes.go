@@ -9,6 +9,9 @@ import (
 )
 
 type ExpedienteAPI interface {
+	ListFolderHistory(context.Context, int64, int64, int, int) (services.ExpedienteHistoryPage, error)
+	ListHistory(context.Context, int64, int, int) (services.ExpedienteHistoryPage, error)
+	UpdateStatus(context.Context, int64, services.UpdateExpedienteStatusInput) (services.ExpedienteResponse, error)
 	UpdateDescription(context.Context, int64, services.UpdateExpedienteDescriptionInput) (services.ExpedienteResponse, error)
 	ListByDenunciante(context.Context, int64, int, int, services.ExpedienteFilters) (services.ExpedienteList, error)
 	ListByDenunciado(context.Context, int64, int, int, services.ExpedienteFilters) (services.ExpedienteList, error)
@@ -19,6 +22,64 @@ type ExpedienteAPI interface {
 
 func registerExpedientes(mux *http.ServeMux, service ExpedienteAPI) {
 	registerParticipantExpedientes(mux, service)
+	mux.HandleFunc("GET /expedientes/{id}/folders/{folderID}/history", func(w http.ResponseWriter, r *http.Request) {
+		id, err := parsePositiveID(r.PathValue("id"))
+		if err != nil {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		folderID, err := parsePositiveID(r.PathValue("folderID"))
+		if err != nil {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		limit, offset, ok := participantPage(r)
+		if !ok {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		result, err := service.ListFolderHistory(r.Context(), id, folderID, limit, offset)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, http.StatusOK, result)
+	})
+	mux.HandleFunc("GET /expedientes/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		id, err := parsePositiveID(r.PathValue("id"))
+		if err != nil {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		limit, offset, ok := participantPage(r)
+		if !ok {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		result, err := service.ListHistory(r.Context(), id, limit, offset)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, http.StatusOK, result)
+	})
+	mux.HandleFunc("PATCH /expedientes/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+		id, err := parsePositiveID(r.PathValue("id"))
+		if err != nil {
+			failure(w, services.ErrExpedienteInvalid)
+			return
+		}
+		var input services.UpdateExpedienteStatusInput
+		if !decode(w, r, &input) {
+			return
+		}
+		result, err := service.UpdateStatus(r.Context(), id, input)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, http.StatusOK, result)
+	})
 	mux.HandleFunc("PATCH /expedientes/{id}/description", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {

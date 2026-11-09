@@ -84,6 +84,11 @@ func TestAutomaticCodesPostgres(t *testing.T) {
 		t.Fatal("initial migration failed")
 	}
 
+	for _, name := range []string{"004_expediente_folders.up.sql", "006_folder_opening_date.up.sql", "008_folder_state_location.up.sql", "009_expediente_status_closing_dates.up.sql", "010_expediente_history.up.sql", "011_folder_history_details.up.sql"} {
+		if err := platform.ApplyUpgradeMigration(ctx, db, "migrations/"+name); err != nil {
+			t.Fatal(err)
+		}
+	}
 	year := 2021
 	opening := &Date{Time: time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)}
 	service := NewExpedienteService(db)

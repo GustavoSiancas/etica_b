@@ -34,7 +34,7 @@ func verifyFolderMigration(t *testing.T, ctx context.Context, db *gorm.DB) {
 			t.Fatal(err)
 		}
 	}
-	for _, migration := range []string{"005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql"} {
+	for _, migration := range []string{"005_document_date.up.sql", "006_folder_opening_date.up.sql", "007_folder_type_abbreviation.up.sql", "008_folder_state_location.up.sql", "009_expediente_status_closing_dates.up.sql", "010_expediente_history.up.sql", "011_folder_history_details.up.sql"} {
 		if err := platform.ApplyUpgradeMigration(ctx, db, filepath.Join("..", "..", "migrations", migration)); err != nil {
 			t.Fatal(err)
 		}
